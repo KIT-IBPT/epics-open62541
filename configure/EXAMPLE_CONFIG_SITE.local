@@ -1,0 +1,7 @@
+# If the compiler is not expecting C 11 code by default, it has to be told
+# to do so.
+# USR_CFLAGS += -std=c11
+
+# If the compiler is not expecting C++ 11 code by default, it has to be told
+# to do so.
+# USR_CXXFLAGS += -std=c++11

@@ -1,0 +1,11 @@
+/.vscode
+/bin
+/configure/CONFIG_SITE.local
+/configure/O.*
+/configure/RELEASE.local
+/db
+/dbd
+/include
+/lib
+/open62541App/Db/O.*
+/open62541App/src/O.*
