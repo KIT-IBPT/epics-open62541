@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -151,25 +151,10 @@ public:
   ServerConnection(const std::string &endpointUrl);
 
   /**
-   * Create a server connection for the specified endpoint, using the specified
-   * configuration.
-   */
-  ServerConnection(const std::string &endpointUrl,
-      const UA_ClientConfig &config);
-
-  /**
    * Create a server connection for the specified endpoint, using the
    * specified credentials for authentication.
    */
   ServerConnection(const std::string &endpointUrl, const std::string &username,
-      const std::string &password);
-
-  /**
-   * Create a server connection for the specified endpoint, using the
-   * specified configuration and the specified credentials for authentication.
-   */
-  ServerConnection(const std::string &endpointUrl,
-      const UA_ClientConfig &config, const std::string &username,
       const std::string &password);
 
   /**
@@ -265,7 +250,6 @@ private:
 
   };
 
-  UA_ClientConfig config;
   std::string endpointUrl;
   std::string username;
   std::string password;
@@ -285,8 +269,8 @@ private:
   ServerConnection &operator=(ServerConnection &&) = delete;
 
   ServerConnection(const std::string &endpointUrl,
-      const UA_ClientConfig &config, const std::string &username,
-      const std::string &password, bool useAuthentication);
+      const std::string &username, const std::string &password,
+      bool useAuthentication);
 
   bool connect();
 

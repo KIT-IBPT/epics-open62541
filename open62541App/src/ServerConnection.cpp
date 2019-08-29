@@ -1,6 +1,6 @@
 /*
- * Copyright 2017-2018 aquenos GmbH.
- * Copyright 2017-2018 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -36,23 +36,12 @@ namespace open62541 {
 namespace epics {
 
 ServerConnection::ServerConnection(const std::string &endpointUrl) :
-    ServerConnection(endpointUrl, UA_ClientConfig_default) {
-}
-
-ServerConnection::ServerConnection(const std::string &endpointUrl,
-    const UA_ClientConfig &config) :
-    ServerConnection(endpointUrl, config, std::string(), std::string(), false) {
+    ServerConnection(endpointUrl, std::string(), std::string(), false) {
 }
 
 ServerConnection::ServerConnection(const std::string &endpointUrl,
     const std::string &username, const std::string &password) :
-    ServerConnection(endpointUrl, UA_ClientConfig_default, username, password) {
-}
-
-ServerConnection::ServerConnection(const std::string &endpointUrl,
-    const UA_ClientConfig &config, const std::string &username,
-    const std::string &password) :
-    ServerConnection(endpointUrl, config, username, password, true) {
+    ServerConnection(endpointUrl, username, password, true) {
 }
 
 ServerConnection::~ServerConnection() {
@@ -215,14 +204,18 @@ ServerConnection::Request &ServerConnection::Request::operator=(Request &&reques
 }
 
 ServerConnection::ServerConnection(const std::string &endpointUrl,
-    const UA_ClientConfig &config, const std::string &username,
-    const std::string &password, bool useAuthentication) :
-    config(config), endpointUrl(endpointUrl), username(username), password(
-        password), useAuthentication(useAuthentication), shutdownRequested(
-        false) {
-  this->client = UA_Client_new(this->config);
-  if (this->client == nullptr) {
+    const std::string &username, const std::string &password,
+    bool useAuthentication) :
+    endpointUrl(endpointUrl), username(username), password(password),
+        useAuthentication(useAuthentication), shutdownRequested(false) {
+  this->client = UA_Client_new();
+  if (!this->client) {
     throw UaException(UA_STATUSCODE_BADOUTOFMEMORY);
+  }
+  auto config = UA_Client_getConfig(this->client);
+  auto statusCode = UA_ClientConfig_setDefault(config);
+  if (statusCode) {
+    throw UaException(statusCode);
   }
   try {
     this->connectionThread = std::thread([this]() {runConnectionThread();});
