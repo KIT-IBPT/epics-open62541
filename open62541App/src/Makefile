@@ -23,6 +23,8 @@ open62541_SRCS += open62541Registrar.cpp
 open62541_SRCS += Open62541RecordAddress.cpp
 open62541_SRCS += ServerConnection.cpp
 open62541_SRCS += ServerConnectionRegistry.cpp
+open62541_SRCS += UaNodeId.cpp
+open62541_SRCS += UaVariant.cpp
 
 open62541_LIBS += $(EPICS_BASE_IOC_LIBS)
 

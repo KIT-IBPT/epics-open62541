@@ -27,6 +27,8 @@
  * of the GNU LGPL version 3 or newer.
  */
 
+#include <chrono>
+
 #include "open62541Error.h"
 #include "UaException.h"
 
@@ -47,7 +49,7 @@ ServerConnection::ServerConnection(const std::string &endpointUrl,
 ServerConnection::~ServerConnection() {
   // Tell the connection thread to shutdown.
   shutdownRequested.store(true, std::memory_order_release);
-  connectionThreadCv.notify_all();
+  requestQueueCv.notify_all();
   // Wait for the shutdown to finish.
   if (connectionThread.joinable()) {
     connectionThread.join();
@@ -62,145 +64,79 @@ ServerConnection::~ServerConnection() {
   }
 }
 
+void ServerConnection::addMonitoredItem(const std::string &subscriptionName,
+    const UaNodeId &nodeId,
+    std::shared_ptr<ServerConnection::MonitoredItemCallback> const &callback,
+    double samplingInterval, std::uint32_t queueSize, bool discardOldest) {
+  std::unique_ptr<Request> request(new AddMonitoredItemRequest(
+    callback, discardOldest, nodeId, queueSize, samplingInterval, subscriptionName));
+  {
+    std::lock_guard<std::mutex> lock(requestQueueMutex);
+    requestQueue.push_back(std::move(request));
+  }
+  requestQueueCv.notify_all();
+}
+
+void ServerConnection::configureSubscriptionLifetimeCount(
+    const std::string &name, std::uint32_t lifetimeCount) {
+  std::lock_guard<std::mutex> lock(mutex);
+  subscriptions[name].lifetimeCount = lifetimeCount;
+}
+
+void ServerConnection::configureSubscriptionMaxKeepAliveCount(
+    const std::string &name, std::uint32_t maxKeepAliveCount) {
+  std::lock_guard<std::mutex> lock(mutex);
+  subscriptions[name].maxKeepAliveCount = maxKeepAliveCount;
+}
+
+void ServerConnection::configureSubscriptionPublishingInterval(
+    const std::string &name, double publishingInterval) {
+  std::lock_guard<std::mutex> lock(mutex);
+  subscriptions[name].publishingInterval = publishingInterval;
+}
+
 void ServerConnection::read(const UA_NodeId &nodeId, UA_Variant &targetValue) {
   std::lock_guard<std::mutex> lock(mutex);
-  UA_StatusCode status = readInternal(nodeId, targetValue);
-  if (status != UA_STATUSCODE_GOOD) {
-    throw UaException(status);
-  }
+  auto value = readInternal(nodeId);
+  UA_Variant_copy(&value.get(), &targetValue);
+  return;
 }
 
 void ServerConnection::readAsync(const UA_NodeId &nodeId,
     std::shared_ptr<ReadCallback> callback) {
-  Request request = Request::readRequest(nodeId, callback);
+  std::unique_ptr<Request> request(new ReadRequest(callback, nodeId));
   {
-    std::lock_guard<std::mutex> lock(mutex);
-    requestQueue.push_back(request);
+    std::lock_guard<std::mutex> lock(requestQueueMutex);
+    requestQueue.push_back(std::move(request));
   }
-  connectionThreadCv.notify_all();
+  requestQueueCv.notify_all();
+}
+
+void ServerConnection::removeMonitoredItem(const std::string &subscriptionName,
+    const UaNodeId &nodeId,
+    std::shared_ptr<ServerConnection::MonitoredItemCallback> const &callback) {
+  std::unique_ptr<Request> request(new RemoveMonitoredItemRequest(
+    callback, nodeId, subscriptionName));
+  {
+    std::lock_guard<std::mutex> lock(requestQueueMutex);
+    requestQueue.push_back(std::move(request));
+  }
+  requestQueueCv.notify_all();
 }
 
 void ServerConnection::write(const UA_NodeId &nodeId, const UA_Variant &value) {
   std::lock_guard<std::mutex> lock(mutex);
-  UA_StatusCode status = writeInternal(nodeId, value);
-  if (status != UA_STATUSCODE_GOOD) {
-    throw UaException(status);
-  }
+  writeInternal(nodeId, value);
 }
 
 void ServerConnection::writeAsync(const UA_NodeId &nodeId,
     const UA_Variant &value, std::shared_ptr<WriteCallback> callback) {
-  Request request = Request::writeRequest(nodeId, value, callback);
+  std::unique_ptr<Request> request(new WriteRequest{callback, nodeId, value});
   {
-    std::lock_guard<std::mutex> lock(mutex);
-    requestQueue.push_back(request);
+    std::lock_guard<std::mutex> lock(requestQueueMutex);
+    requestQueue.push_back(std::move(request));
   }
-  connectionThreadCv.notify_all();
-}
-
-ServerConnection::Request ServerConnection::Request::readRequest(
-    const UA_NodeId &nodeId, const std::shared_ptr<ReadCallback> &callback) {
-  // For a read request, the variant is never used, but we still initialize it
-  // so that it is correctly identified as an empty variant in the requests's
-  // destructor.
-  UA_Variant v;
-  UA_Variant_init(&v);
-  return Request(RequestType::read, nodeId, v, callback,
-      std::shared_ptr<WriteCallback>());
-}
-
-ServerConnection::Request ServerConnection::Request::writeRequest(
-    const UA_NodeId &nodeId, const UA_Variant &value,
-    const std::shared_ptr<WriteCallback> &callback) {
-  return Request(RequestType::write, nodeId, value,
-      std::shared_ptr<ReadCallback>(), callback);
-}
-
-ServerConnection::Request::Request(RequestType type, const UA_NodeId &nodeId,
-    const UA_Variant &value, const std::shared_ptr<ReadCallback> &readCallback,
-    const std::shared_ptr<WriteCallback> &writeCallback) :
-    type(type), readCallback(readCallback), writeCallback(writeCallback) {
-  UA_StatusCode status;
-  status = UA_NodeId_copy(&nodeId, &this->nodeId);
-  if (status != UA_STATUSCODE_GOOD) {
-    throw UaException(status);
-  }
-  status = UA_Variant_copy(&value, &this->value);
-  if (status != UA_STATUSCODE_GOOD) {
-    // The destructor is not going to be called when we throw an exception, so
-    // we have to ensure that members of the copied node ID are freed.
-    UA_NodeId_deleteMembers(&this->nodeId);
-    throw UaException(status);
-  }
-}
-
-ServerConnection::Request::Request(const Request &request) {
-  // We have to initialize the nodeId and value so that when calling the delete
-  // functions they do not work on uninitialized data.
-  UA_NodeId_init(&this->nodeId);
-  UA_Variant_init(&this->value);
-  *this = request;
-}
-
-ServerConnection::Request::Request(Request &&request) {
-  // We have to initialize the nodeId and value so that when calling the delete
-  // functions they do not work on uninitialized data.
-  UA_NodeId_init(&this->nodeId);
-  UA_Variant_init(&this->value);
-  *this = request;
-}
-
-ServerConnection::Request::~Request() {
-  UA_NodeId_deleteMembers(&this->nodeId);
-  UA_Variant_deleteMembers(&this->value);
-}
-
-ServerConnection::Request &ServerConnection::Request::operator=(const Request &request) {
-  if (&request == this) {
-    return *this;
-  }
-  UA_NodeId tempNodeId;
-  UA_Variant tempValue;
-  UA_StatusCode status;
-  status = UA_NodeId_copy(&request.nodeId, &tempNodeId);
-  if (status != UA_STATUSCODE_GOOD) {
-    throw UaException(status);
-  }
-  status = UA_Variant_copy(&request.value, &tempValue);
-  if (status != UA_STATUSCODE_GOOD) {
-    UA_NodeId_deleteMembers(&tempNodeId);
-    throw UaException(status);
-  }
-  // We have to free the members of the old values before initializing them with
-  // new ones.
-  UA_NodeId_deleteMembers(&this->nodeId);
-  UA_Variant_deleteMembers(&this->value);
-  this->nodeId = tempNodeId;
-  this->value = tempValue;
-  this->type = request.type;
-  this->readCallback = request.readCallback;
-  this->writeCallback = request.writeCallback;
-  return *this;
-}
-
-ServerConnection::Request &ServerConnection::Request::operator=(Request &&request) {
-  if (&request == this) {
-    return *this;
-  }
-  // We have to free the members of the old values before initializing them with
-  // new ones.
-  UA_NodeId_deleteMembers(&this->nodeId);
-  UA_Variant_deleteMembers(&this->value);
-  this->nodeId = request.nodeId;
-  this->value = request.value;
-  // We have to reset the original value and node ID so that their members are
-  // not freed when the original request is destroyed.
-  UA_NodeId_init(&request.nodeId);
-  UA_Variant_init(&request.value);
-  this->type = request.type;
-  this->readCallback = request.readCallback;
-  this->writeCallback = request.writeCallback;
-  return *this;
+  requestQueueCv.notify_all();
 }
 
 ServerConnection::ServerConnection(const std::string &endpointUrl,
@@ -235,6 +171,134 @@ ServerConnection::ServerConnection(const std::string &endpointUrl,
   }
 }
 
+void ServerConnection::activateMonitoredItem(Subscription &subscription,
+    MonitoredItem &monitoredItem) {
+  // This method should only be called for a monitored item that has not been
+  // activated yet.
+  assert (!monitoredItem.active);
+  auto monitoredItemCreateRequest =
+    UA_MonitoredItemCreateRequest_default(monitoredItem.nodeId.get());
+  // The monitoringMode is set to UA_MONITORINGMODE_REPORTING by default, which
+  // is what we need. We configure the other parameters according to what was
+  // requested by the user.
+  monitoredItemCreateRequest.requestedParameters.discardOldest =
+    monitoredItem.discardOldest;
+  monitoredItemCreateRequest.requestedParameters.queueSize =
+    monitoredItem.queueSize;
+  monitoredItemCreateRequest.requestedParameters.samplingInterval =
+    monitoredItem.samplingInterval;
+  void *context = &monitoredItem;
+  UA_Client_DeleteMonitoredItemCallback deleteCallback = nullptr;
+  auto monitoredItemCreateResult = UA_Client_MonitoredItems_createDataChange(
+    client, subscription.subscriptionId, UA_TIMESTAMPSTORETURN_NEITHER,
+    monitoredItemCreateRequest, context,
+    monitoredItemDataChangeNotificationCallback, deleteCallback);
+  auto status = monitoredItemCreateResult.statusCode;
+  auto monitoredItemId = monitoredItemCreateResult.monitoredItemId;
+  UA_MonitoredItemCreateRequest_clear(&monitoredItemCreateRequest);
+  UA_MonitoredItemCreateResult_clear(&monitoredItemCreateResult);
+  switch (status) {
+  case UA_STATUSCODE_GOOD:
+    monitoredItem.monitoredItemId = monitoredItemId;
+    monitoredItem.active = true;
+    break;
+  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
+  case UA_STATUSCODE_BADCONNECTIONCLOSED:
+  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
+  case UA_STATUSCODE_BADSESSIONIDINVALID:
+    // For certain errors, we try to reconnect. If the reconnect attempt fails
+    // or the monitored item cannot not be activated as part of that attempt, we
+    // still throw an exception.
+    if (!resetConnection() || !monitoredItem.active) {
+      throw UaException(status);
+    }
+    break;
+  default:
+    // For all other errors, we immediately throw an exception.
+    throw UaException(status);
+  }
+}
+
+void ServerConnection::activateSubscription(Subscription &subscription) {
+  assert (!subscription.active);
+  auto createSubscriptionRequest = UA_CreateSubscriptionRequest_default();
+  createSubscriptionRequest.requestedLifetimeCount = subscription.lifetimeCount;
+  createSubscriptionRequest.requestedMaxKeepAliveCount =
+    subscription.maxKeepAliveCount;
+  createSubscriptionRequest.requestedPublishingInterval =
+    subscription.publishingInterval;
+  void *context = nullptr;
+  auto createSubscriptionResponse = UA_Client_Subscriptions_create(
+    client, createSubscriptionRequest, context, nullptr, nullptr);
+  auto subscriptionId = createSubscriptionResponse.subscriptionId;
+  auto status = createSubscriptionResponse.responseHeader.serviceResult;
+  UA_CreateSubscriptionRequest_clear(&createSubscriptionRequest);
+  UA_CreateSubscriptionResponse_clear(&createSubscriptionResponse);
+  switch (status) {
+  case UA_STATUSCODE_GOOD:
+    subscription.subscriptionId = subscriptionId;
+    subscription.active = true;
+  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
+  case UA_STATUSCODE_BADCONNECTIONCLOSED:
+  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
+  case UA_STATUSCODE_BADSESSIONIDINVALID:
+    // For certain errors, we try to reconnect. If the reconnect attempt fails
+    // or the subscription cannot not be activated as part of that attempt, we
+    // still throw an exception.
+    if (!resetConnection() || !subscription.active) {
+      throw UaException(status);
+    }
+    break;
+  default:
+    // For all other errors, we immediately throw an exception.
+    throw UaException(status);
+  }
+}
+
+void ServerConnection::addMonitoredItemInternal(
+    const std::string &subscriptionName, const UaNodeId &nodeId,
+    std::shared_ptr<ServerConnection::MonitoredItemCallback> const &callback,
+    double samplingInterval, std::uint32_t queueSize, bool discardOldest) {
+  auto &subscription = subscriptions[subscriptionName];
+  auto &monitoredItems = subscription.monitoredItems[nodeId];
+  // If the specified callback is already registered for the specified
+  // subscription and node ID, we discard this request.
+  for (auto &monitoredItem : monitoredItems) {
+    if (monitoredItem.callback == callback) {
+      return;
+    }
+  }
+  // The specified callback does not exist yet for the specified node ID, so we
+  // add a monitored item to our internal data structures.
+  monitoredItems.emplace_back(
+    callback, discardOldest, nodeId, queueSize, samplingInterval);
+  auto &monitoredItem = monitoredItems.back();
+  // The following actions might result in a UaException (e.g. because the
+  // server is offline or does not support a certain option). For this reason,
+  // we wrap it in a try-catch block and notifiy the callback of the problem if
+  // there is any.
+  try {
+    // If the subscription has not been created on the server yet, we have to do
+    // this first, before we can add the monitored item to it.
+    if (!subscription.active) {
+      activateSubscription(subscription);
+    }
+    // Now that we have an active subscription, we can register the monitored
+    // item with the server.
+    activateMonitoredItem(subscription, monitoredItem);
+  } catch (UaException const &e) {
+    // We notify the callback that there is a problem.
+    try {
+      callback->failure(nodeId, e.getStatusCode());
+    } catch (...) {
+      // We catch all exceptions because an exception in a callback should never
+      // stop the connection thread.
+      errorExtendedPrintf(
+          "Exception from callback caught in connection thread.");
+    }
+  }
+}
+
 bool ServerConnection::connect() {
   UA_StatusCode status;
   if (useAuthentication) {
@@ -244,6 +308,58 @@ bool ServerConnection::connect() {
     status = UA_Client_connect(client, endpointUrl.c_str());
   }
   if (status == UA_STATUSCODE_GOOD) {
+    // When the connection has been (re-)established, we also want to reactivate
+    // all monitored items.
+    for (auto &subscriptionEntry : subscriptions) {
+      auto &subscription = subscriptionEntry.second;
+      // We do not activate empty subscriptions. They are going to be activated
+      // when the first monitored item is added to them.
+      if (subscription.monitoredItems.empty()) {
+        continue;
+      }
+      // Problems when activating a subscription should not keep us from trying
+      // to activate other subscriptions.
+      try  {
+        activateSubscription(subscription);
+        for (auto &monitoredItemsEntry : subscription.monitoredItems) {
+          auto &monitoredItems = monitoredItemsEntry.second;
+          for (auto &monitoredItem : monitoredItems) {
+            // Problems when activating a monitored item should not keep us from
+            // trying to activate other monitored items.
+            try {
+              activateMonitoredItem(subscription, monitoredItem);
+            } catch (UaException &e) {
+              try {
+                monitoredItem.callback->failure(
+                  monitoredItem.nodeId, e.getStatusCode());
+              } catch (...) {
+                // We catch all exceptions because an exception in a callback
+                // should never stop the connection thread.
+                errorExtendedPrintf(
+                    "Exception from callback caught in connection thread.");
+              }
+            }
+          }
+        }
+      } catch (UaException &e) {
+        // We notify the callbacks of the monitored items that the subscription
+        // could not be registered.
+        for (auto &monitoredItemsEntry : subscription.monitoredItems) {
+          auto &monitoredItems = monitoredItemsEntry.second;
+          for (auto &monitoredItem : monitoredItems) {
+            try {
+              monitoredItem.callback->failure(
+                monitoredItem.nodeId, e.getStatusCode());
+            } catch (...) {
+              // We catch all exceptions because an exception in a callback
+              // should never stop the connection thread.
+              errorExtendedPrintf(
+                  "Exception from callback caught in connection thread.");
+            }
+          }
+        }
+      }
+    }
     return true;
   } else {
     errorExtendedPrintf("Could not connect to OPC UA server: %s",
@@ -252,26 +368,185 @@ bool ServerConnection::connect() {
   }
 }
 
+void ServerConnection::deactivateMonitoredItem(Subscription &subscription,
+    MonitoredItem &monitoredItem) {
+  // This method should only be called if the monitored item is active.
+  assert(monitoredItem.active);
+  // We do not check the status code returned by the function call. If there is
+  // an error, there is nothing that we can reasonably do anyway.
+  UA_Client_MonitoredItems_deleteSingle(
+    client, subscription.subscriptionId, monitoredItem.monitoredItemId);
+  monitoredItem.active = false;
+}
+
+void ServerConnection::deactivateSubscription(Subscription &subscription) {
+  // This method should only be called if the subscription is active.
+  assert(subscription.active);
+  // We do not check the status code returned by the function call. If there is
+  // an error, there is nothing that we can reasonably do anyway.
+  UA_Client_Subscriptions_deleteSingle(client, subscription.subscriptionId);
+  subscription.active = false;
+}
+
+UaVariant ServerConnection::readInternal(const UaNodeId &nodeId) {
+  UA_StatusCode status;
+  UA_Variant targetValue;
+  UA_Variant_init(&targetValue);
+  status = UA_Client_readValueAttribute(client, nodeId.get(), &targetValue);
+  switch (status) {
+  case UA_STATUSCODE_GOOD:
+    return UaVariant(std::move(targetValue));
+  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
+  case UA_STATUSCODE_BADCONNECTIONCLOSED:
+  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
+  case UA_STATUSCODE_BADSESSIONIDINVALID:
+    if (resetConnection()) {
+      status = UA_Client_readValueAttribute(client, nodeId.get(), &targetValue);
+      if (status == UA_STATUSCODE_GOOD) {
+        return UaVariant(std::move(targetValue));
+      } else {
+        UA_Variant_clear(&targetValue);
+        throw UaException(status);
+      }
+    } else {
+      UA_Variant_clear(&targetValue);
+      throw UaException(status);
+    }
+    break;
+  default:
+    throw UaException(status);
+  }
+}
+
+void ServerConnection::removeMonitoredItemInternal(
+    const std::string &subscriptionName, const UaNodeId &nodeId,
+    std::shared_ptr<ServerConnection::MonitoredItemCallback> const &callback) {
+  // If the specified subscription does not exist, we are done.
+  auto subscriptionIterator = subscriptions.find(subscriptionName);
+  if (subscriptionIterator == subscriptions.end()) {
+    return;
+  }
+  auto &subscription = subscriptionIterator->second;
+  // If there are no monitored items for the specified node ID, we are done.
+  auto monitoredItemsIterator = subscription.monitoredItems.find(nodeId);
+  if (monitoredItemsIterator == subscription.monitoredItems.end()) {
+    return;
+  }
+  auto &monitoredItems = monitoredItemsIterator->second;
+  // There might be multiple registrations for the same node ID, so we iterate
+  // over all items until we find the one that matches the callback.
+  for (auto monitoredItemIterator = monitoredItems.begin();
+      monitoredItemIterator != monitoredItems.end(); ++monitoredItemsIterator) {
+    auto &monitoredItem = *monitoredItemIterator;
+    if (monitoredItem.callback == callback) {
+      if (monitoredItem.active) {
+        deactivateMonitoredItem(subscription, monitoredItem);
+      }
+      monitoredItems.erase(monitoredItemIterator);
+      break;
+    }
+  }
+  // If this was the last monitored item for the specified node ID, we remove
+  // the entire entry for the node ID from the subscription.
+  if (monitoredItems.empty()) {
+    subscription.monitoredItems.erase(monitoredItemsIterator);
+  }
+  // If this was the last node ID for the specified subscription, we deactivate
+  // the subscription.
+  if (subscription.monitoredItems.empty()) {
+    deactivateSubscription(subscription);
+  }
+}
+
+bool ServerConnection::resetConnection() {
+      // We do not check the result of UA_Client_disconnect on purpose: Even if
+    // there was an error, the next logical step would be resetting the client.
+    UA_Client_disconnect(client);
+    UA_Client_reset(client);
+    for (auto &subscriptionEntry : subscriptions) {
+      auto &subscription = subscriptionEntry.second;
+      subscription.active = false;
+      for (auto &monitoredItemsEntry : subscription.monitoredItems) {
+        auto &monitoredItems = monitoredItemsEntry.second;
+        for (auto &monitoredItem : monitoredItems) {
+          // TODO We might have to notify the callback that the connection is
+          // broken.
+          monitoredItem.active = false;
+        }
+      }
+    }
+    return connect();
+}
+
 void ServerConnection::runConnectionThread() {
   while (!shutdownRequested.load(std::memory_order_acquire)) {
-    std::unique_lock<std::mutex> lock(mutex);
+    {
+      // On each iteration, we have the client do some background activity, like
+      // processing notifications and calling callbacks. We need to hold the
+      // mutex while doing this because no other calls should be made to the
+      // client while doing this and our callbacks also depend on the mutex
+      // being held.
+      std::lock_guard<std::mutex> lock(mutex);
+      auto status = UA_Client_run_iterate(client, 0);
+      // Certain status codes indicate that the connection might have broken
+      // down and should be reestablished. In all other cases, we simply ignore
+      // errors here.
+      switch (status) {
+      case UA_STATUSCODE_BADCOMMUNICATIONERROR:
+      case UA_STATUSCODE_BADCONNECTIONCLOSED:
+      case UA_STATUSCODE_BADSERVERNOTCONNECTED:
+      case UA_STATUSCODE_BADSESSIONIDINVALID:
+        resetConnection();
+        break;
+      default:
+        break;
+      }
+    }
+    std::unique_lock<std::mutex> requestQueueLock(requestQueueMutex);
     if (requestQueue.empty()) {
-      connectionThreadCv.wait(lock);
+      // If the request queue is empty, we sleep for one millisecond. After that
+      // time, we wake up in order to have the client process background
+      // activity (like processing notifications that might have arrived).
+      requestQueueCv.wait_for(requestQueueLock, std::chrono::milliseconds(1));
       continue;
     }
-    Request request = requestQueue.front();
+    auto request = std::move(requestQueue.front());
     requestQueue.pop_front();
-    switch (request.getType()) {
+    // From this point on, we do not need to hold a lock on the request queue
+    // mutex any longer.
+    requestQueueLock.release();
+    // While processing the requests, we have to hold a lock on the general
+    // mutex.
+    std::lock_guard<std::mutex> lock(mutex);
+    switch (request->type) {
+    case RequestType::addMonitoredItem: {
+      AddMonitoredItemRequest &addMonitoredItemRequest =
+        *(dynamic_cast<AddMonitoredItemRequest *>(request.get()));
+      addMonitoredItemInternal(
+        addMonitoredItemRequest.subscription,
+        addMonitoredItemRequest.nodeId,
+        addMonitoredItemRequest.callback,
+        addMonitoredItemRequest.samplingInterval,
+        addMonitoredItemRequest.queueSize,
+        addMonitoredItemRequest.discardOldest);
+      break;
+    }
     case RequestType::read: {
+      ReadRequest &readRequest = *(dynamic_cast<ReadRequest *>(
+        request.get()));
       UA_StatusCode status;
-      UA_Variant value;
-      UA_Variant_init(&value);
-      status = readInternal(request.getNodeId(), value);
+      UaVariant value;
+      try {
+        value = readInternal(readRequest.nodeId);
+        status = UA_STATUSCODE_GOOD;
+      } catch (UaException const &e) {
+        status = e.getStatusCode();
+      }
       try {
         if (status == UA_STATUSCODE_GOOD) {
-          request.getReadCallback().success(request.getNodeId(), value);
+          readRequest.callback->success(readRequest.nodeId.get(), value.get());
         } else {
-          request.getReadCallback().failure(request.getNodeId(), status);
+          readRequest.callback->failure(readRequest.nodeId.get(), status);
         }
       } catch (...) {
         // We catch all exceptions because an exception in a callback should
@@ -279,17 +554,32 @@ void ServerConnection::runConnectionThread() {
         errorExtendedPrintf(
             "Exception from callback caught in connection thread.");
       }
-      UA_Variant_deleteMembers(&value);
+      break;
+    }
+    case RequestType::removeMonitoredItem: {
+      RemoveMonitoredItemRequest &removeMonitoredItemRequest =
+        *(dynamic_cast<RemoveMonitoredItemRequest *>(request.get()));
+      removeMonitoredItemInternal(
+        removeMonitoredItemRequest.subscription,
+        removeMonitoredItemRequest.nodeId,
+        removeMonitoredItemRequest.callback);
       break;
     }
     case RequestType::write: {
+      WriteRequest &writeRequest = *(dynamic_cast<WriteRequest *>(
+        request.get()));
       UA_StatusCode status;
-      status = writeInternal(request.getNodeId(), request.getValue());
+      try {
+        writeInternal(writeRequest.nodeId, writeRequest.value);
+        status = UA_STATUSCODE_GOOD;
+      } catch (UaException const &e) {
+        status = e.getStatusCode();
+      }
       try {
         if (status == UA_STATUSCODE_GOOD) {
-          request.getWriteCallback().success(request.getNodeId());
+          writeRequest.callback->success(writeRequest.nodeId.get());
         } else {
-          request.getWriteCallback().failure(request.getNodeId(), status);
+          writeRequest.callback->failure(writeRequest.nodeId.get(), status);
         }
       } catch (...) {
         // We catch all exceptions because an exception in a callback should
@@ -303,56 +593,44 @@ void ServerConnection::runConnectionThread() {
   }
 }
 
-UA_StatusCode ServerConnection::readInternal(const UA_NodeId &nodeId,
-    UA_Variant &targetValue) {
+void ServerConnection::writeInternal(const UaNodeId &nodeId,
+    const UaVariant &value) {
   UA_StatusCode status;
-  status = UA_Client_readValueAttribute(client, nodeId, &targetValue);
+  status = UA_Client_writeValueAttribute(client, nodeId.get(), &value.get());
   switch (status) {
+  case UA_STATUSCODE_GOOD:
+    return;
   case UA_STATUSCODE_BADCOMMUNICATIONERROR:
   case UA_STATUSCODE_BADCONNECTIONCLOSED:
   case UA_STATUSCODE_BADSERVERNOTCONNECTED:
   case UA_STATUSCODE_BADSESSIONIDINVALID:
-    // We do not check the result of UA_Client_disconnect on purpose: Even if
-    // there was an error, the next logical step would be resetting the client.
-    UA_Client_disconnect(client);
-    UA_Client_reset(client);
-    if (connect()) {
-      status = UA_Client_readValueAttribute(client, nodeId, &targetValue);
+    if (resetConnection()) {
+      status = UA_Client_writeValueAttribute(client, nodeId.get(), &value.get());
+      if (status != UA_STATUSCODE_GOOD) {
+        throw UaException(status);
+      }
     } else {
-      return status;
+      throw UaException(status);
     }
     break;
   default:
-    // We proceed normally for all other status codes.
-    break;
+    throw UaException(status);
   }
-  return status;
 }
 
-UA_StatusCode ServerConnection::writeInternal(const UA_NodeId &nodeId,
-    const UA_Variant &value) {
-  UA_StatusCode status;
-  status = UA_Client_writeValueAttribute(client, nodeId, &value);
-  switch (status) {
-  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
-  case UA_STATUSCODE_BADCONNECTIONCLOSED:
-  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
-  case UA_STATUSCODE_BADSESSIONIDINVALID:
-    // We do not check the result of UA_Client_disconnect on purpose: Even if
-    // there was an error, the next logical step would be resetting the client.
-    UA_Client_disconnect(client);
-    UA_Client_reset(client);
-    if (connect()) {
-      status = UA_Client_writeValueAttribute(client, nodeId, &value);
-    } else {
-      return status;
-    }
-    break;
-  default:
-    // We proceed normally for all other status codes.
-    break;
+void ServerConnection::monitoredItemDataChangeNotificationCallback(
+    UA_Client *client, UA_UInt32 subscriptionId, void *subscriptionContext,
+    UA_UInt32 monitoredItemId, void *monitoredItemContext,
+    UA_DataValue *value) {
+  MonitoredItem *monitoredItem =
+    static_cast<MonitoredItem *>(monitoredItemContext);
+  if (value->hasValue) {
+    monitoredItem->callback->success(
+      monitoredItem->nodeId, std::move(value->value));
   }
-  return status;
+  if (value->hasStatus && value->status != UA_STATUSCODE_GOOD) {
+    monitoredItem->callback->failure(monitoredItem->nodeId, value->status);
+  }
 }
 
 }

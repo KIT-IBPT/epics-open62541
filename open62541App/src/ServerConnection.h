@@ -39,14 +39,18 @@
 
 #include <atomic>
 #include <condition_variable>
+#include <cstdint>
 #include <list>
+#include <memory>
 #include <mutex>
+#include <stdexcept>
 #include <string>
 #include <thread>
+#include <unordered_map>
+#include <vector>
 
-extern "C" {
-#include "open62541.h"
-}
+#include "UaNodeId.h"
+#include "UaVariant.h"
 
 namespace open62541 {
 namespace epics {
@@ -100,6 +104,48 @@ public:
     ReadCallback(ReadCallback &&) = delete;
     ReadCallback &operator=(const ReadCallback &) = delete;
     ReadCallback &operator=(ReadCallback &&) = delete;
+
+  };
+
+  /**
+   * Interface for a monitored item callback. Monitored utem callbacks are
+   * called when a notification about a data change is received for a monitored
+   * item.
+   */
+  class MonitoredItemCallback {
+
+  public:
+
+    /**
+     * Called when a successful notification is received. The node ID passed is
+     * the node ID specified in the read request. The value passed is the value
+     * received from the server.
+     */
+    virtual void success(const UaNodeId &nodeId, const UaVariant &value) = 0;
+
+    /**
+     * Called when there is a problem with the subscription (e.g. the connection
+     * is interrupted or the subscription cannot be registered with the server).
+     */
+    virtual void failure(const UaNodeId &nodeId, UA_StatusCode statusCode) =0;
+
+    /**
+     * Default constructor.
+     */
+    MonitoredItemCallback() {
+    }
+
+    /**
+     * Destructor. Virtual classes should have a virtual destructor.
+     */
+    virtual ~MonitoredItemCallback() {
+    }
+
+    // We do not want to allow copy or move construction or assignment.
+    MonitoredItemCallback(const MonitoredItemCallback &) = delete;
+    MonitoredItemCallback(MonitoredItemCallback &&) = delete;
+    MonitoredItemCallback &operator=(const MonitoredItemCallback &) = delete;
+    MonitoredItemCallback &operator=(MonitoredItemCallback &&) = delete;
 
   };
 
@@ -163,6 +209,80 @@ public:
   ~ServerConnection();
 
   /**
+   * Registers a monitored item with this server connection.
+   *
+   * This registers a monitor for the node specified through the node ID. The is
+   * going to send a notification when the value of the node changes and the
+   * specified callback is going to be called.
+   *
+   * The subscription name identifies the subscription that is used for the
+   * monitored item. Many monitored items can share the same subscription. If no
+   * subscription with the specified name exists yet, it is automatically
+   * created.
+   *
+   * The sampling interval specifies how often the server should check for a new
+   * value and add it to the queue of notifications. The queue size specified the
+   * requested size of this queue. The discard oldest flag defines whether in
+   * case this queue is full the oldest (true) or the newest (false) value
+   * should be discarded.
+   *
+   * Please note that the sampling interval and the queue size are just
+   * suggestions to the server. The server may still choose different setitngs.
+   * Even if the sampling interval is very short, notifications will only be
+   * sent according to the publishing interval of the associated subscription.
+   */
+  void addMonitoredItem(const std::string &subscriptionName,
+      const UaNodeId &nodeId,
+      std::shared_ptr<MonitoredItemCallback> const &callback,
+      double samplingInterval, std::uint32_t queueSize, bool discardOldest);
+
+  /**
+   * Sets the lifetime count for the specified subscription.
+   *
+   * The lifetime count defines how many publishing intervals may pass without
+   * receiving a publishing request from the client before the server considers
+   * the client inactive and removes the subscription.
+   *
+   * In most cases, the default value will be fine and there will be no reason
+   * to change this setting.
+   *
+   * Making changes to this setting has no effect when the corresponding
+   * subscription has already been created.
+   */
+  void configureSubscriptionLifetimeCount(const std::string &name,
+      std::uint32_t lifetimeCount);
+
+  /**
+   * Sets the max. keep-alive count for the specified subscription.
+   *
+   * The max. keep-alive count defines how many publishing intervals may pass
+   * without any notifications being sent to the client. If this number of
+   * intervals is exceeded, the server sends an empty notification to the client
+   * in order to let it know that the server is still active.
+   *
+   * In most cases, the default value will be fine and there will be no reason
+   * to change this setting.
+   *
+   * Making changes to this setting has no effect when the corresponding
+   * subscription has already been created.
+   */
+  void configureSubscriptionMaxKeepAliveCount(const std::string &name,
+      std::uint32_t maxKeepAliveCount);
+
+  /**
+   * Sets the publishing interface for the specified subscription.
+   *
+   * The publishing interval defines the time (in milliseconds) that the server
+   * waits between checking whether there are any queued notifications for a
+   * subscription.
+   *
+   * Making changes to this setting has no effect when the corresponding
+   * subscription has already been created.
+   */
+  void configureSubscriptionPublishingInterval(const std::string &name,
+      double publishingInterval);
+
+  /**
    * Reads a node's value. Throws an UaException if there is a problem.
    */
   void read(const UA_NodeId &nodeId, UA_Variant &targetValue);
@@ -175,6 +295,16 @@ public:
    */
   void readAsync(const UA_NodeId &nodeId,
       std::shared_ptr<ReadCallback> callback);
+
+  /**
+   * Unregisters a monitored item from this server connection.
+   *
+   * If the specified callback has not been previously registered for the
+   * specified subscription and node ID, this method does nothing.
+   */
+  void removeMonitoredItem(const std::string &subscriptionName,
+      const UaNodeId &nodeId,
+      std::shared_ptr<MonitoredItemCallback> const &callback);
 
   /**
    * Writes to a node's value. Throws an UaException if there is a problem.
@@ -192,61 +322,123 @@ public:
 
 private:
 
-  enum class RequestType {
-    read, write
+  struct MonitoredItem {
+
+    bool active = false;
+    std::shared_ptr<MonitoredItemCallback> callback;
+    bool discardOldest;
+    std::uint32_t monitoredItemId;
+    UaNodeId nodeId;
+    std::uint32_t queueSize;
+    double samplingInterval;
+
+    inline MonitoredItem(std::shared_ptr<MonitoredItemCallback> const &callback,
+        bool discardOldest, UaNodeId const &nodeId, std::uint32_t queueSize,
+        double samplingInterval) : callback(callback),
+        discardOldest(discardOldest), nodeId(nodeId), queueSize(queueSize),
+        samplingInterval(samplingInterval) {
+    }
+
   };
 
-  class Request {
+  // Using std::variant would be much more elegant than using a common base
+  // class and std::unique_ptr, but we want to avoid a dependency on C++ 17.
+  enum class RequestType {
+    addMonitoredItem, read, removeMonitoredItem, write
+  };
 
-  public:
-
-    Request(const Request &request);
-    Request(Request &&request);
-    ~Request();
-
-    Request &operator=(const Request &request);
-    Request &operator=(Request &&request);
-
-    static Request readRequest(const UA_NodeId &nodeId,
-        const std::shared_ptr<ReadCallback> &callback);
-    static Request writeRequest(const UA_NodeId &nodeId,
-        const UA_Variant &value,
-        const std::shared_ptr<WriteCallback> &callback);
-
-    inline RequestType getType() const {
-      return type;
-    }
-
-    inline UA_NodeId const & getNodeId() const {
-      return nodeId;
-    }
-
-    inline UA_Variant const & getValue() const {
-      return value;
-    }
-
-    inline ReadCallback& getReadCallback() {
-      if (!readCallback) {
-        throw std::runtime_error("Read callback not available.");
-      }
-      return *readCallback;
-    }
-
-    inline WriteCallback& getWriteCallback() {
-      return *writeCallback;
-    }
-
-  private:
-
-    Request(RequestType type, const UA_NodeId &nodeId, const UA_Variant &value,
-        const std::shared_ptr<ReadCallback> &readCallback,
-        const std::shared_ptr<WriteCallback> &writeCallback);
+  struct Request {
 
     RequestType type;
-    UA_NodeId nodeId;
-    UA_Variant value;
-    std::shared_ptr<ReadCallback> readCallback;
-    std::shared_ptr<WriteCallback> writeCallback;
+
+    Request(RequestType type) : type(type) {}
+
+    // We want the base class to be virtual so that we can use dynamic_cast.
+    // The easiest way for getting this is making the destructor virtual.
+    virtual ~Request() noexcept {}
+
+  };
+
+  struct AddMonitoredItemRequest : Request {
+
+    std::shared_ptr<MonitoredItemCallback> callback;
+    bool discardOldest;
+    UaNodeId nodeId;
+    std::uint32_t queueSize;
+    double samplingInterval;
+    std::string subscription;
+
+    inline AddMonitoredItemRequest(
+        std::shared_ptr<MonitoredItemCallback> const &callback,
+        bool discardOldest, UaNodeId const &nodeId, std::uint32_t queueSize,
+        double samplingInterval, std::string const &subscription)
+        : Request(RequestType::addMonitoredItem), callback(callback),
+        discardOldest(discardOldest), nodeId(nodeId), queueSize(queueSize),
+        samplingInterval(samplingInterval), subscription(subscription) {
+      if (!callback) {
+        throw std::invalid_argument("The callback must not be null.");
+      }
+    }
+
+  };
+
+  struct ReadRequest : Request {
+
+    std::shared_ptr<ReadCallback> callback;
+    UaNodeId nodeId;
+
+    inline ReadRequest(std::shared_ptr<ReadCallback> const &callback,
+        UaNodeId const &nodeId) : Request(RequestType::read),
+        callback(callback), nodeId(nodeId) {
+      if (!callback) {
+        throw std::invalid_argument("The callback must not be null.");
+      }
+    }
+
+  };
+
+  struct RemoveMonitoredItemRequest : Request {
+
+    std::shared_ptr<MonitoredItemCallback> callback;
+    UaNodeId nodeId;
+    std::string subscription;
+
+    inline RemoveMonitoredItemRequest(
+        std::shared_ptr<MonitoredItemCallback> const &callback,
+        UaNodeId const &nodeId, std::string const &subscription)
+        : Request(RequestType::removeMonitoredItem), callback(callback),
+        nodeId(nodeId), subscription(subscription) {
+      if (!callback) {
+        throw std::invalid_argument("The callback must not be null.");
+      }
+    }
+
+  };
+
+  struct WriteRequest : Request {
+
+
+    std::shared_ptr<WriteCallback> callback;
+    UaNodeId nodeId;
+    UaVariant value;
+    inline WriteRequest(std::shared_ptr<WriteCallback> const &callback,
+        UaNodeId const &nodeId, UaVariant const &value)
+        : Request(RequestType::write), callback(callback), nodeId(nodeId) {
+      if (!callback) {
+        throw std::invalid_argument("The callback must not be null.");
+      }
+    }
+
+  };
+
+  struct Subscription {
+
+    bool active = false;
+    std::uint32_t lifetimeCount = 10000;
+    std::uint32_t maxKeepAliveCount = 10;
+    std::unordered_map<UaNodeId, std::vector<MonitoredItem>> monitoredItems;
+    double publishingInterval = 500.0;
+    std::uint32_t subscriptionId;
 
   };
 
@@ -257,9 +449,11 @@ private:
 
   std::mutex mutex;
   std::thread connectionThread;
-  std::condition_variable connectionThreadCv;
   std::atomic<bool> shutdownRequested;
-  std::list<Request> requestQueue;
+  std::unordered_map<std::string, Subscription> subscriptions;
+  std::list<std::unique_ptr<Request>> requestQueue;
+  std::condition_variable requestQueueCv;
+  std::mutex requestQueueMutex;
   UA_Client *client;
 
   // We do not want to allow copy or move construction or assignment.
@@ -272,12 +466,29 @@ private:
       const std::string &username, const std::string &password,
       bool useAuthentication);
 
+  void activateMonitoredItem(Subscription &subscription,
+      MonitoredItem &monitoredItem);
+  void activateSubscription(Subscription &subscription);
+  void addMonitoredItemInternal(const std::string &subscriptionName,
+      const UaNodeId &nodeId,
+      std::shared_ptr<MonitoredItemCallback> const &callback,
+      double samplingInterval, std::uint32_t queueSize, bool discardOldest);
   bool connect();
-
+  void deactivateMonitoredItem(Subscription &subscription,
+      MonitoredItem &monitoredItem);
+  void deactivateSubscription(Subscription &subscription);
+  UaVariant readInternal(const UaNodeId &nodeId);
+  void removeMonitoredItemInternal(const std::string &subscriptionName,
+      const UaNodeId &nodeId,
+      std::shared_ptr<MonitoredItemCallback> const &callback);
+  bool resetConnection();
   void runConnectionThread();
+  void writeInternal(const UaNodeId &nodeId, const UaVariant &value);
 
-  UA_StatusCode readInternal(const UA_NodeId &nodeId, UA_Variant &targetValue);
-  UA_StatusCode writeInternal(const UA_NodeId &nodeId, const UA_Variant &value);
+  static void monitoredItemDataChangeNotificationCallback(UA_Client *client,
+      UA_UInt32 subscriptionId, void *subscriptionContext,
+      UA_UInt32 monitoredItemId, void *monitoredItemContext,
+      UA_DataValue *value);
 
 };
 
