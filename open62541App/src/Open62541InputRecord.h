@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -55,14 +55,12 @@ protected:
    */
   Open62541InputRecord(RecordType *record) :
       Open62541Record<RecordType>(record, record->inp), readSuccessful(false) {
-    UA_Variant_init(&this->readValue);
   }
 
   /**
    * Destructor.
    */
   virtual ~Open62541InputRecord() {
-    UA_Variant_deleteMembers(&this->readValue);
   }
 
   virtual void processPrepare();
@@ -87,8 +85,8 @@ private:
 
   struct CallbackImpl: ServerConnection::ReadCallback {
     CallbackImpl(Open62541InputRecord &record);
-    void success(const UA_NodeId &nodeId, const UA_Variant &value);
-    void failure(const UA_NodeId &nodeId, UA_StatusCode statusCode);
+    void success(const UaNodeId &nodeId, const UaVariant &value);
+    void failure(const UaNodeId &nodeId, UA_StatusCode statusCode);
 
     // In EPICS, records are never destroyed. Therefore, we can safely keep a
     // reference to the device support object.
@@ -102,7 +100,7 @@ private:
   Open62541InputRecord &operator=(Open62541InputRecord &&) = delete;
 
   bool readSuccessful;
-  UA_Variant readValue;
+  UaVariant readValue;
   std::string readErrorMessage;
 
 };
@@ -135,27 +133,15 @@ Open62541InputRecord<RecordType>::CallbackImpl::CallbackImpl(
 
 template<typename RecordType>
 void Open62541InputRecord<RecordType>::CallbackImpl::success(
-    const UA_NodeId &nodeId, const UA_Variant &value) {
+    const UaNodeId &nodeId, const UaVariant &value) {
   record.readSuccessful = true;
-  // Free the members of the old value before overwriting it.
-  UA_Variant_deleteMembers(&record.readValue);
-  UA_StatusCode status = UA_Variant_copy(&value, &record.readValue);
-  if (status != UA_STATUSCODE_GOOD) {
-    record.readSuccessful = false;
-    try {
-      record.readErrorMessage = std::string("Could not copy read value: ")
-          + UA_StatusCode_name(status);
-    } catch (...) {
-      // We want to schedule processing of the record even if we cannot assemble
-      // the error message for some obscure reason.
-    }
-  }
+  record.readValue = value;
   record.scheduleProcessing();
 }
 
 template<typename RecordType>
 void Open62541InputRecord<RecordType>::CallbackImpl::failure(
-    const UA_NodeId &nodeId, UA_StatusCode statusCode) {
+    const UaNodeId &nodeId, UA_StatusCode statusCode) {
   record.readSuccessful = false;
   try {
     record.readErrorMessage = std::string("Error reading from node: ")

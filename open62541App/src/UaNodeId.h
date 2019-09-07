@@ -50,8 +50,6 @@ namespace epics {
  */
 class UaNodeId {
 
-  // TODO Use UaNodeId everywhere in our code where we currently use UA_NodeId.
-
 public:
 
   /**

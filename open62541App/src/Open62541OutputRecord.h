@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -74,7 +74,7 @@ protected:
    * Reads and returns the record's current value. The caller is responsible for
    * freeing the memory associated with the returned variant.
    */
-  virtual UA_Variant readRecordValue() = 0;
+  virtual UaVariant readRecordValue() = 0;
 
   /**
    * Generic implementation of readRecordValue. Child classes can call this
@@ -90,7 +90,7 @@ protected:
    * returned variant.
    */
   template<typename ValueFieldType>
-  UA_Variant readRecordValueGeneric(const ValueFieldType &valueField,
+  UaVariant readRecordValueGeneric(const ValueFieldType &valueField,
       Open62541RecordAddress::DataType defaultDataType);
 
   virtual void processPrepare();
@@ -101,8 +101,8 @@ private:
 
   struct CallbackImpl: ServerConnection::WriteCallback {
     CallbackImpl(Open62541OutputRecord &record);
-    void success(const UA_NodeId &nodeId);
-    void failure(const UA_NodeId &nodeId, UA_StatusCode statusCode);
+    void success(const UaNodeId &nodeId);
+    void failure(const UaNodeId &nodeId, UA_StatusCode statusCode);
 
     // In EPICS, records are never destroyed. Therefore, we can safely keep a
     // reference to the device support object.
@@ -129,23 +129,16 @@ template<typename RecordType>
 void Open62541OutputRecord<RecordType>::initializeRecord() {
   Open62541Record<RecordType>::initializeRecord();
   if (this->getRecordAddress().isReadOnInit()) {
-    UA_Variant value;
-    UA_Variant_init(&value);
+    UaVariant value;
     try {
-      this->getServerConnection()->read(this->getRecordAddress().getNodeId(),
-          value);
+      value = this->getServerConnection()->read(
+        this->getRecordAddress().getNodeId());
     } catch (const UaException &e) {
       errorExtendedPrintf("%s Could not initialize record value: %s",
           this->getRecord()->name, e.what());
       return;
     }
-    try {
-      this->writeRecordValue(value);
-    } catch (...) {
-      UA_Variant_deleteMembers(&value);
-      throw;
-    }
-    UA_Variant_deleteMembers(&value);
+    this->writeRecordValue(value);
     // The record's value has been initialized, therefore it is not undefined
     // any longer.
     this->getRecord()->udf = 0;
@@ -161,7 +154,7 @@ void Open62541OutputRecord<RecordType>::initializeRecord() {
 
 template<typename RecordType>
 template<typename ValueFieldType>
-UA_Variant Open62541OutputRecord<RecordType>::readRecordValueGeneric(
+UaVariant Open62541OutputRecord<RecordType>::readRecordValueGeneric(
     const ValueFieldType &valueField,
     Open62541RecordAddress::DataType defaultDataType) {
   Open62541RecordAddress::DataType dataType =
@@ -248,21 +241,15 @@ UA_Variant Open62541OutputRecord<RecordType>::readRecordValueGeneric(
   if (status != UA_STATUSCODE_GOOD) {
     throw UaException(status);
   }
-  return value;
+  return UaVariant(std::move(value));
 }
 
 template<typename RecordType>
 void Open62541OutputRecord<RecordType>::processPrepare() {
-  UA_Variant value = this->readRecordValue();
-  try {
-    auto callback = std::make_shared<CallbackImpl>(*this);
-    this->getServerConnection()->writeAsync(
-        this->getRecordAddress().getNodeId(), value, callback);
-  } catch (...) {
-    UA_Variant_deleteMembers(&value);
-    throw;
-  }
-  UA_Variant_deleteMembers(&value);
+  UaVariant value = this->readRecordValue();
+  auto callback = std::make_shared<CallbackImpl>(*this);
+  this->getServerConnection()->writeAsync(
+      this->getRecordAddress().getNodeId(), value, callback);
 }
 
 template<typename RecordType>
@@ -281,14 +268,14 @@ Open62541OutputRecord<RecordType>::CallbackImpl::CallbackImpl(
 
 template<typename RecordType>
 void Open62541OutputRecord<RecordType>::CallbackImpl::success(
-    const UA_NodeId &nodeId) {
+    const UaNodeId &nodeId) {
   record.writeSuccessful = true;
   record.scheduleProcessing();
 }
 
 template<typename RecordType>
 void Open62541OutputRecord<RecordType>::CallbackImpl::failure(
-    const UA_NodeId &nodeId, UA_StatusCode statusCode) {
+    const UaNodeId &nodeId, UA_StatusCode statusCode) {
   record.writeSuccessful = false;
   try {
     record.writeErrorMessage = std::string("Error write to node: ")

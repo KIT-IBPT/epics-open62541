@@ -51,8 +51,6 @@ namespace epics {
  */
 class UaVariant {
 
-  // TODO Use UaVariant everywhere in our code where we currently use UA_Variant.
-
 public:
 
   /**
@@ -115,6 +113,52 @@ public:
    */
   inline UA_Variant const & get() const {
     return value;
+  }
+
+  /**
+   * Returns the length of the array represented by this variant. Calling this
+   * method on a variant that is not an array results in undefined behavior.
+   */
+  inline std::size_t getArrayLength() const {
+    return value.arrayLength;
+  }
+
+  /**
+   * Returns the pointer to value data. Using this template method with a data
+   * type that does not match the actual type represented by the variant results
+   * in undefined behavior.
+   */
+  template <typename T>
+  inline T *getData() {
+    return static_cast<T *>(this->value.data);
+  }
+
+  /**
+   * Returns the pointer to value data. Using this template method with a data
+   * type that does not match the actual type represented by the variant results
+   * in undefined behavior.
+   */
+  template <typename T>
+  inline T const *getData() const {
+    return static_cast<T const *>(this->value.data);
+  }
+
+  /**
+   * Returns the type of the value. Calling this method on a variant that is
+   * empty result in an exception being thrown.
+   */
+  inline UA_DataType const &getType() const {
+    if (!this->value.type) {
+      throw std::runtime_error("getType() has been called on an empty variant.");
+    }
+    return *(this->value.type);
+  }
+
+  /**
+   * Tells whether this variant represents a scalar type.
+   */
+  inline bool isScalar() const {
+    return UA_Variant_isScalar(&this->value);
   }
 
 private:

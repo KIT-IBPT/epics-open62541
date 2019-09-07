@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -73,7 +73,7 @@ void aaoCopyArray(const SourceType *src, DestinationType *dst,
 }
 
 template<typename DestinationType>
-void copyFromAaoRecordValue(::aaoRecord *record, UA_Variant *dst,
+UaVariant copyFromAaoRecordValue(::aaoRecord *record,
     const UA_DataType *dstType) {
   // This is just a safety check. The record support should already ensure that
   // this is always true.
@@ -130,7 +130,10 @@ void copyFromAaoRecordValue(::aaoRecord *record, UA_Variant *dst,
   // We use UA_Variant_setArray instead of UA_Variant_setArrayCopy. This way,
   // the actual data does not have to be copied again and the buffer that we
   // have allocated is deleted when the variant is deleted.
-  UA_Variant_setArray(dst, buffer, record->nord, dstType);
+  UA_Variant dst;
+  UA_Variant_init(&dst);
+  UA_Variant_setArray(&dst, buffer, record->nord, dstType);
+  return UaVariant(std::move(dst));
 }
 
 template<typename SourceType>
@@ -201,7 +204,7 @@ public:
 
 protected:
 
-  UA_Variant readRecordValue() {
+  UaVariant readRecordValue() {
     const Open62541RecordAddress &address = getRecordAddress();
     ::aaoRecord *record = getRecord();
     Open62541RecordAddress::DataType dataType = address.getDataType();
@@ -237,8 +240,7 @@ protected:
         throw std::runtime_error("Unsupported FTVL.");
       }
     }
-    UA_Variant value;
-    UA_Variant_init(&value);
+    UaVariant value;
     // Obviously, some conversions (e.g. to boolean or to unsigned types) are
     // going to be lossy. However, we use the same logic for deciding whether
     // to assume conversion is enabled (if not specified explicitly) that we
@@ -246,46 +248,46 @@ protected:
     // be easier to understand for users.
     switch (dataType) {
     case Open62541RecordAddress::DataType::boolean:
-      copyFromAaoRecordValue<UA_Boolean>(record, &value,
+      value = copyFromAaoRecordValue<UA_Boolean>(record,
           &UA_TYPES[UA_TYPES_BOOLEAN]);
       break;
     case Open62541RecordAddress::DataType::sbyte:
-      copyFromAaoRecordValue<UA_SByte>(record, &value,
+      value = copyFromAaoRecordValue<UA_SByte>(record,
           &UA_TYPES[UA_TYPES_SBYTE]);
       break;
     case Open62541RecordAddress::DataType::byte:
-      copyFromAaoRecordValue<UA_Byte>(record, &value, &UA_TYPES[UA_TYPES_BYTE]);
+      value = copyFromAaoRecordValue<UA_Byte>(record, &UA_TYPES[UA_TYPES_BYTE]);
       break;
     case Open62541RecordAddress::DataType::uint16:
-      copyFromAaoRecordValue<UA_UInt16>(record, &value,
+      value = copyFromAaoRecordValue<UA_UInt16>(record,
           &UA_TYPES[UA_TYPES_UINT16]);
       break;
     case Open62541RecordAddress::DataType::int16:
-      copyFromAaoRecordValue<UA_Int16>(record, &value,
+      value = copyFromAaoRecordValue<UA_Int16>(record,
           &UA_TYPES[UA_TYPES_INT16]);
       break;
     case Open62541RecordAddress::DataType::uint32:
-      copyFromAaoRecordValue<UA_UInt32>(record, &value,
+      value = copyFromAaoRecordValue<UA_UInt32>(record,
           &UA_TYPES[UA_TYPES_UINT32]);
       break;
     case Open62541RecordAddress::DataType::int32:
-      copyFromAaoRecordValue<UA_Int32>(record, &value,
+      value = copyFromAaoRecordValue<UA_Int32>(record,
           &UA_TYPES[UA_TYPES_INT32]);
       break;
     case Open62541RecordAddress::DataType::uint64:
-      copyFromAaoRecordValue<UA_UInt64>(record, &value,
+      value = copyFromAaoRecordValue<UA_UInt64>(record,
           &UA_TYPES[UA_TYPES_UINT64]);
       break;
     case Open62541RecordAddress::DataType::int64:
-      copyFromAaoRecordValue<UA_Int64>(record, &value,
+      value = copyFromAaoRecordValue<UA_Int64>(record,
           &UA_TYPES[UA_TYPES_INT64]);
       break;
     case Open62541RecordAddress::DataType::floatType:
-      copyFromAaoRecordValue<UA_Float>(record, &value,
+      value = copyFromAaoRecordValue<UA_Float>(record,
           &UA_TYPES[UA_TYPES_FLOAT]);
       break;
     case Open62541RecordAddress::DataType::doubleType:
-      copyFromAaoRecordValue<UA_Double>(record, &value,
+      value = copyFromAaoRecordValue<UA_Double>(record,
           &UA_TYPES[UA_TYPES_DOUBLE]);
       break;
     default:
@@ -297,17 +299,17 @@ protected:
     return value;
   }
 
-  void writeRecordValue(const UA_Variant &value) {
+  void writeRecordValue(const UaVariant &value) {
     ::aaoRecord *record = getRecord();
-    if (UA_Variant_isEmpty(&value)) {
+    if (!value) {
       recGblSetSevr(record, READ_ALARM, INVALID_ALARM);
       throw std::runtime_error("Read variant is empty.");
     }
-    if (UA_Variant_isScalar(&value)) {
+    if (value.isScalar()) {
       throw std::runtime_error(
           "Read variant is a scalar, but an array is needed.");
     }
-    std::size_t numberOfSourceElements = value.arrayLength;
+    std::size_t numberOfSourceElements = value.getArrayLength();
     std::size_t numberOfDestinationElements = record->nelm;
     if (numberOfSourceElements > numberOfDestinationElements) {
       errorExtendedPrintf(
@@ -325,7 +327,7 @@ protected:
           "aao: buffer calloc failed");
     }
     const Open62541RecordAddress &address = getRecordAddress();
-    switch (value.type->typeIndex) {
+    switch (value.getType().typeIndex) {
     case UA_TYPES_BOOLEAN:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
@@ -333,9 +335,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_Boolean *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_Boolean>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_SBYTE:
@@ -344,9 +346,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_SByte *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_SByte>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_BYTE:
@@ -355,9 +357,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_Byte *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_Byte>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_UINT16:
@@ -367,9 +369,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_UInt16 *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_UInt16>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_INT16:
@@ -378,9 +380,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_Int16 *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_Int16>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_UINT32:
@@ -390,9 +392,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_UInt32 *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_UInt32>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_INT32:
@@ -401,9 +403,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_Int32 *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_Int32>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_UINT64:
@@ -413,9 +415,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_UInt64 *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_UInt64>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_INT64:
@@ -424,9 +426,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_Int64 *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_Int64>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_FLOAT:
@@ -436,9 +438,9 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_Float *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_Float>(),
           numberOfSourceElements);
       break;
     case UA_TYPES_DOUBLE:
@@ -448,16 +450,16 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
-      copyToAaoRecordValue(record, static_cast<UA_Double *>(value.data),
+      copyToAaoRecordValue(record, value.getData<UA_Double>(),
           numberOfSourceElements);
       break;
     default:
       recGblSetSevr(this->getRecord(), READ_ALARM, INVALID_ALARM);
       throw std::runtime_error(
           std::string("Received unsupported variant type ")
-              + value.type->typeName + ".");
+              + value.getType().typeName + ".");
     }
   }
 

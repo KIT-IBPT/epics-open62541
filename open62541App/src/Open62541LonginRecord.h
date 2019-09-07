@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -56,7 +56,7 @@ public:
 
 protected:
 
-  virtual void writeRecordValue(const UA_Variant &value) {
+  virtual void writeRecordValue(const UaVariant &value) {
     writeRecordValueGeneric(value, getRecord()->val);
   }
 

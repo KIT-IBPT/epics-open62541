@@ -78,14 +78,14 @@ public:
      * specified in the read request. The value passed is the value read from
      * the server.
      */
-    virtual void success(const UA_NodeId &nodeId, const UA_Variant &value) = 0;
+    virtual void success(const UaNodeId &nodeId, const UaVariant &value) = 0;
 
     /**
      * Called when a read operation fails. The node ID passed is the node ID
      * specified in the read request. The status code  gives information about
      * the cause of the failure.
      */
-    virtual void failure(const UA_NodeId &nodeId, UA_StatusCode statusCode) =0;
+    virtual void failure(const UaNodeId &nodeId, UA_StatusCode statusCode) =0;
 
     /**
      * Default constructor.
@@ -162,14 +162,14 @@ public:
      * Called when the operation succeeds. The node ID passed is the node ID
      * specified in the write request.
      */
-    virtual void success(const UA_NodeId &nodeId) = 0;
+    virtual void success(const UaNodeId &nodeId) = 0;
 
     /**
      * Called when a write operation fails. The node ID passed is the node ID
      * specified in the read request. The status code  gives information about
      * the cause of the failure.
      */
-    virtual void failure(const UA_NodeId &nodeId, UA_StatusCode statusCode) =0;
+    virtual void failure(const UaNodeId &nodeId, UA_StatusCode statusCode) =0;
 
     /**
      * Default constructor.
@@ -285,7 +285,7 @@ public:
   /**
    * Reads a node's value. Throws an UaException if there is a problem.
    */
-  void read(const UA_NodeId &nodeId, UA_Variant &targetValue);
+  UaVariant read(const UaNodeId &nodeId);
 
   /**
    * Reads a node's value asynchronously. When the operation completes, the
@@ -293,7 +293,7 @@ public:
    * ID so that the passed node ID does not have to be kept alive after this
    * method returns.
    */
-  void readAsync(const UA_NodeId &nodeId,
+  void readAsync(const UaNodeId &nodeId,
       std::shared_ptr<ReadCallback> callback);
 
   /**
@@ -309,7 +309,7 @@ public:
   /**
    * Writes to a node's value. Throws an UaException if there is a problem.
    */
-  void write(const UA_NodeId &nodeId, const UA_Variant &value);
+  void write(const UaNodeId &nodeId, const UaVariant &value);
 
   /**
    * Writes a node's value asynchronously. When the operation completes, the
@@ -317,7 +317,7 @@ public:
    * ID and value so that the passed node ID and value do not have to be kept
    * alive after this method returns.
    */
-  void writeAsync(const UA_NodeId &nodeId, const UA_Variant &value,
+  void writeAsync(const UaNodeId &nodeId, const UaVariant &value,
       std::shared_ptr<WriteCallback> callback);
 
 private:

@@ -95,14 +95,12 @@ void ServerConnection::configureSubscriptionPublishingInterval(
   subscriptions[name].publishingInterval = publishingInterval;
 }
 
-void ServerConnection::read(const UA_NodeId &nodeId, UA_Variant &targetValue) {
+UaVariant ServerConnection::read(const UaNodeId &nodeId) {
   std::lock_guard<std::mutex> lock(mutex);
-  auto value = readInternal(nodeId);
-  UA_Variant_copy(&value.get(), &targetValue);
-  return;
+  return readInternal(nodeId);
 }
 
-void ServerConnection::readAsync(const UA_NodeId &nodeId,
+void ServerConnection::readAsync(const UaNodeId &nodeId,
     std::shared_ptr<ReadCallback> callback) {
   std::unique_ptr<Request> request(new ReadRequest(callback, nodeId));
   {
@@ -124,13 +122,13 @@ void ServerConnection::removeMonitoredItem(const std::string &subscriptionName,
   requestQueueCv.notify_all();
 }
 
-void ServerConnection::write(const UA_NodeId &nodeId, const UA_Variant &value) {
+void ServerConnection::write(const UaNodeId &nodeId, const UaVariant &value) {
   std::lock_guard<std::mutex> lock(mutex);
   writeInternal(nodeId, value);
 }
 
-void ServerConnection::writeAsync(const UA_NodeId &nodeId,
-    const UA_Variant &value, std::shared_ptr<WriteCallback> callback) {
+void ServerConnection::writeAsync(const UaNodeId &nodeId,
+    const UaVariant &value, std::shared_ptr<WriteCallback> callback) {
   std::unique_ptr<Request> request(new WriteRequest{callback, nodeId, value});
   {
     std::lock_guard<std::mutex> lock(requestQueueMutex);

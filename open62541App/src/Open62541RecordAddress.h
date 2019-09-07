@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -36,6 +36,8 @@
 extern "C" {
 #include "open62541.h"
 }
+
+#include "UaNodeId.h"
 
 namespace open62541 {
 namespace epics {
@@ -176,11 +178,6 @@ public:
   Open62541RecordAddress(const std::string &addressString);
 
   /**
-   * Destructor.
-   */
-  ~Open62541RecordAddress();
-
-  /**
    * Returns the string identifying the connection.
    */
   inline const std::string &getConnectionId() const {
@@ -204,7 +201,7 @@ public:
   /**
    * Returns the node ID of the node to which the record is mapped..
    */
-  inline const UA_NodeId &getNodeId() const {
+  inline const UaNodeId &getNodeId() const {
     return nodeId;
   }
 
@@ -224,7 +221,7 @@ private:
   std::string connectionId;
   ConversionMode conversionMode;
   DataType dataType;
-  UA_NodeId nodeId;
+  UaNodeId nodeId;
 
   bool readOnInit;
 

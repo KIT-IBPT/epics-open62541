@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -85,7 +85,7 @@ std::string trim(const std::string &str, const std::string &whitespace =
   return str.substr(start, end - start);
 }
 
-UA_NodeId parseNodeId(const std::string &nodeIdString) {
+UaNodeId parseNodeId(const std::string &nodeIdString) {
   if (startsWithIgnoreCase(nodeIdString, "num:")) {
     auto commaPos = nodeIdString.find(',');
     if (commaPos == std::string::npos) {
@@ -123,7 +123,7 @@ UA_NodeId parseNodeId(const std::string &nodeIdString) {
       throw std::invalid_argument(
           std::string("Invalid numeric ID in node ID: ") + nodeIdString);
     }
-    return UA_NODEID_NUMERIC(static_cast<UA_UInt16>(ns),
+    return UaNodeId::createNumeric(static_cast<UA_UInt16>(ns),
         static_cast<UA_UInt32>(num));
   } else if (startsWithIgnoreCase(nodeIdString, "str:")) {
     auto commaPos = nodeIdString.find(',');
@@ -147,7 +147,7 @@ UA_NodeId parseNodeId(const std::string &nodeIdString) {
       throw std::invalid_argument(
           std::string("Invalid namespace index in node ID: ") + nodeIdString);
     }
-    return UA_NODEID_STRING_ALLOC(static_cast<UA_UInt16>(ns), idString.c_str());
+    return UaNodeId::createString(static_cast<UA_UInt16>(ns), idString);
   } else {
     throw std::invalid_argument(
         std::string("Invalid node ID in record address: ") + nodeIdString);
@@ -159,9 +159,6 @@ UA_NodeId parseNodeId(const std::string &nodeIdString) {
 Open62541RecordAddress::Open62541RecordAddress(const std::string &addressString) :
     conversionMode(ConversionMode::automatic), dataType(DataType::unspecified), readOnInit(
         true) {
-  // First, we ensure that the node ID is never uninitialized, regardless of
-  // what we do in the rest of the code.
-  UA_NodeId_init(&this->nodeId);
   const std::string delimiters(" \t\n\v\f\r");
   std::size_t tokenStart, tokenLength;
   // First, read the device name.
@@ -336,10 +333,6 @@ Open62541RecordAddress::Open62541RecordAddress(const std::string &addressString)
   }
   // Finally, we parse the node ID.
   this->nodeId = parseNodeId(nodeIdString);
-}
-
-Open62541RecordAddress::~Open62541RecordAddress() {
-  UA_NodeId_deleteMembers(&nodeId);
 }
 
 }

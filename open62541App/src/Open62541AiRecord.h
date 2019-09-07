@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -85,17 +85,17 @@ protected:
     }
   }
 
-  virtual void writeRecordValue(const UA_Variant &value) {
-    if (UA_Variant_isEmpty(&value)) {
+  virtual void writeRecordValue(const UaVariant &value) {
+    if (!value) {
       recGblSetSevr(this->getRecord(), READ_ALARM, INVALID_ALARM);
       throw std::runtime_error("Read variant is empty.");
     }
-    if (!UA_Variant_isScalar(&value)) {
+    if (!value.isScalar()) {
       throw std::runtime_error(
           "Read variant is an array, but a scalar is needed.");
     }
     const Open62541RecordAddress &address = getRecordAddress();
-    switch (value.type->typeIndex) {
+    switch (value.getType().typeIndex) {
     case UA_TYPES_BOOLEAN:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
@@ -103,16 +103,16 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::direct) {
         this->getRecord()->val =
-            (*static_cast<UA_Boolean *>(value.data)) ? 1.0 : 0.0;
+            (*value.getData<UA_Boolean>()) ? 1.0 : 0.0;
         skipConversion = true;
       } else {
         this->getRecord()->rval =
-            (*static_cast<UA_Boolean *>(value.data)) ? 1 : 0;
+            (*value.getData<UA_Boolean>()) ? 1 : 0;
       }
       break;
     case UA_TYPES_SBYTE:
@@ -121,14 +121,14 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::direct) {
-        this->getRecord()->val = *static_cast<UA_SByte *>(value.data);
+        this->getRecord()->val = *value.getData<UA_SByte>();
         skipConversion = true;
       } else {
-        this->getRecord()->rval = *static_cast<UA_SByte *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_SByte>();
       }
       break;
     case UA_TYPES_BYTE:
@@ -137,14 +137,14 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::direct) {
-        this->getRecord()->val = *static_cast<UA_Byte *>(value.data);
+        this->getRecord()->val = *value.getData<UA_Byte>();
         skipConversion = true;
       } else {
-        this->getRecord()->rval = *static_cast<UA_Byte *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_Byte>();
       }
       break;
     case UA_TYPES_UINT16:
@@ -154,14 +154,14 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::direct) {
-        this->getRecord()->val = *static_cast<UA_UInt16 *>(value.data);
+        this->getRecord()->val = *value.getData<UA_UInt16>();
         skipConversion = true;
       } else {
-        this->getRecord()->rval = *static_cast<UA_UInt16 *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_UInt16>();
       }
       break;
     case UA_TYPES_INT16:
@@ -170,14 +170,14 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::direct) {
-        this->getRecord()->val = *static_cast<UA_Int16 *>(value.data);
+        this->getRecord()->val = *value.getData<UA_Int16>();
         skipConversion = true;
       } else {
-        this->getRecord()->rval = *static_cast<UA_Int16 *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_Int16>();
       }
       break;
     case UA_TYPES_UINT32:
@@ -187,16 +187,16 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       // When using the UInt32 data type, we use the direct mode as a default.
       // A UInt32 might not fit into an EPICS long, so directly writing to VAL
       // makes sense.
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::convert) {
-        this->getRecord()->rval = *static_cast<UA_UInt32 *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_UInt32>();
       } else {
-        this->getRecord()->val = *static_cast<UA_UInt32 *>(value.data);
+        this->getRecord()->val = *value.getData<UA_UInt32>();
         skipConversion = true;
       }
       break;
@@ -206,14 +206,14 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::direct) {
-        this->getRecord()->val = *static_cast<UA_Int32 *>(value.data);
+        this->getRecord()->val = *value.getData<UA_Int32>();
         skipConversion = true;
       } else {
-        this->getRecord()->rval = *static_cast<UA_Int32 *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_Int32>();
       }
       break;
     case UA_TYPES_UINT64:
@@ -223,16 +223,16 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       // When using the UInt64 data type, we use the direct mode as a default.
       // A UInt64 might not fit into an EPICS long, so directly writing to VAL
       // makes sense.
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::convert) {
-        this->getRecord()->rval = *static_cast<UA_UInt64 *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_UInt64>();
       } else {
-        this->getRecord()->val = *static_cast<UA_UInt64 *>(value.data);
+        this->getRecord()->val = *value.getData<UA_UInt64>();
         skipConversion = true;
       }
       break;
@@ -242,16 +242,16 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       // When using the Int64 data type, we use the direct mode as a default.
       // An Int64 might not fit into an EPICS long, so directly writing to VAL
       // makes sense.
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::convert) {
-        this->getRecord()->rval = *static_cast<UA_Int64 *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_Int64>();
       } else {
-        this->getRecord()->val = *static_cast<UA_Int64 *>(value.data);
+        this->getRecord()->val = *value.getData<UA_Int64>();
         skipConversion = true;
       }
       break;
@@ -262,16 +262,16 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       // When using the Float data type, we use the direct mode as a default.
       // A Float might not fit into an EPICS long, so directly writing to VAL
       // makes sense.
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::convert) {
-        this->getRecord()->rval = *static_cast<UA_Float *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_Float>();
       } else {
-        this->getRecord()->val = *static_cast<UA_Float *>(value.data);
+        this->getRecord()->val = *value.getData<UA_Float>();
         skipConversion = true;
       }
       break;
@@ -282,16 +282,16 @@ protected:
         throw std::runtime_error(
             std::string("Expected data type ")
                 + Open62541RecordAddress::nameForDataType(address.getDataType())
-                + " but got " + value.type->typeName);
+                + " but got " + value.getType().typeName);
       }
       // When using the Double data type, we use the direct mode as a default.
       // A Double might not fit into an EPICS long, so directly writing to VAL
       // makes sense.
       if (address.getConversionMode()
           == Open62541RecordAddress::ConversionMode::convert) {
-        this->getRecord()->rval = *static_cast<UA_Double *>(value.data);
+        this->getRecord()->rval = *value.getData<UA_Double>();
       } else {
-        this->getRecord()->val = *static_cast<UA_Double *>(value.data);
+        this->getRecord()->val = *value.getData<UA_Double>();
         skipConversion = true;
       }
       break;
@@ -299,7 +299,7 @@ protected:
       recGblSetSevr(this->getRecord(), READ_ALARM, INVALID_ALARM);
       throw std::runtime_error(
           std::string("Received unsupported variant type ")
-              + value.type->typeName + ".");
+              + value.getType().typeName + ".");
     }
   }
 

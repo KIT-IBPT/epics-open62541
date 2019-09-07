@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -143,7 +143,7 @@ protected:
   /**
    * Updates the record's value with the specified value.
    */
-  virtual void writeRecordValue(const UA_Variant &value) = 0;
+  virtual void writeRecordValue(const UaVariant &value) = 0;
 
   /**
    * Generic implementation of writeRecordValue. Child classes can call this
@@ -153,7 +153,7 @@ protected:
    * supported (numeric) OPC UA types to the field's type.
    */
   template<typename ValueFieldType>
-  void writeRecordValueGeneric(const UA_Variant &value,
+  void writeRecordValueGeneric(const UaVariant &value,
       ValueFieldType &valueField);
 
 private:
@@ -238,26 +238,26 @@ void Open62541Record<RecordType>::validateRecordAddress() {
 template<typename RecordType>
 template<typename ValueFieldType>
 void Open62541Record<RecordType>::writeRecordValueGeneric(
-    const UA_Variant &value, ValueFieldType &valueField) {
-  if (UA_Variant_isEmpty(&value)) {
+    const UaVariant &value, ValueFieldType &valueField) {
+  if (!value) {
     recGblSetSevr(this->getRecord(), READ_ALARM, INVALID_ALARM);
     throw std::runtime_error("Read variant is empty.");
   }
-  if (!UA_Variant_isScalar(&value)) {
+  if (!value.isScalar()) {
     throw std::runtime_error(
         "Read variant is an array, but a scalar is needed.");
   }
   const Open62541RecordAddress &address = getRecordAddress();
-  switch (value.type->typeIndex) {
+  switch (value.getType().typeIndex) {
   case UA_TYPES_BOOLEAN:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
         && address.getDataType() != Open62541RecordAddress::DataType::boolean) {
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = (*static_cast<UA_Boolean *>(value.data)) ? 1 : 0;
+    valueField = (*value.getData<UA_Boolean>()) ? 1 : 0;
     break;
   case UA_TYPES_SBYTE:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -265,9 +265,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_SByte *>(value.data);
+    valueField = *value.getData<UA_SByte>();
     break;
   case UA_TYPES_BYTE:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -275,9 +275,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_Byte *>(value.data);
+    valueField = *value.getData<UA_Byte>();
     break;
   case UA_TYPES_UINT16:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -285,9 +285,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_UInt16 *>(value.data);
+    valueField = *value.getData<UA_UInt16>();
     break;
   case UA_TYPES_INT16:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -295,9 +295,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_Int16 *>(value.data);
+    valueField = *value.getData<UA_Int16>();
     break;
   case UA_TYPES_UINT32:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -305,9 +305,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_UInt32 *>(value.data);
+    valueField = *value.getData<UA_UInt32>();
     break;
   case UA_TYPES_INT32:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -315,9 +315,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_Int32 *>(value.data);
+    valueField = *value.getData<UA_Int32>();
     break;
   case UA_TYPES_UINT64:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -325,9 +325,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_UInt64 *>(value.data);
+    valueField = *value.getData<UA_UInt64>();
     break;
   case UA_TYPES_INT64:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -335,9 +335,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_Int64 *>(value.data);
+    valueField = *value.getData<UA_Int64>();
     break;
   case UA_TYPES_FLOAT:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -346,9 +346,9 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_Float *>(value.data);
+    valueField = *value.getData<UA_Float>();
     break;
   case UA_TYPES_DOUBLE:
     if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
@@ -357,14 +357,14 @@ void Open62541Record<RecordType>::writeRecordValueGeneric(
       throw std::runtime_error(
           std::string("Expected data type ")
               + Open62541RecordAddress::nameForDataType(address.getDataType())
-              + " but got " + value.type->typeName);
+              + " but got " + value.getType().typeName);
     }
-    valueField = *static_cast<UA_Double *>(value.data);
+    valueField = *value.getData<UA_Double>();
     break;
   default:
     recGblSetSevr(this->getRecord(), READ_ALARM, INVALID_ALARM);
     throw std::runtime_error(
-        std::string("Received unsupported variant type ") + value.type->typeName
+        std::string("Received unsupported variant type ") + value.getType().typeName
             + ".");
   }
 }
