@@ -237,50 +237,41 @@ public:
       double samplingInterval, std::uint32_t queueSize, bool discardOldest);
 
   /**
-   * Sets the lifetime count for the specified subscription.
+   * Returns the lifetime count for the specified subscription.
    *
    * The lifetime count defines how many publishing intervals may pass without
    * receiving a publishing request from the client before the server considers
    * the client inactive and removes the subscription.
    *
-   * In most cases, the default value will be fine and there will be no reason
-   * to change this setting.
-   *
-   * Making changes to this setting has no effect when the corresponding
-   * subscription has already been created.
+   * If the lifetime count has not been set explicitly, the default value
+   * (10000) is returned.
    */
-  void configureSubscriptionLifetimeCount(const std::string &name,
-      std::uint32_t lifetimeCount);
+  std::uint32_t getSubscriptionLifetimeCount(const std::string &name);
 
   /**
-   * Sets the max. keep-alive count for the specified subscription.
+   * Returns the max. keep-alive count for the specified subscription.
    *
    * The max. keep-alive count defines how many publishing intervals may pass
    * without any notifications being sent to the client. If this number of
    * intervals is exceeded, the server sends an empty notification to the client
    * in order to let it know that the server is still active.
    *
-   * In most cases, the default value will be fine and there will be no reason
-   * to change this setting.
-   *
-   * Making changes to this setting has no effect when the corresponding
-   * subscription has already been created.
+   * If the max. keep-alive count has not been set explicitly, the default value
+   * (10) is returned.
    */
-  void configureSubscriptionMaxKeepAliveCount(const std::string &name,
-      std::uint32_t maxKeepAliveCount);
+  std::uint32_t getSubscriptionMaxKeepAliveCount(const std::string &name);
 
   /**
-   * Sets the publishing interface for the specified subscription.
+   * Returns the publishing interval for the specified subscription.
    *
    * The publishing interval defines the time (in milliseconds) that the server
    * waits between checking whether there are any queued notifications for a
    * subscription.
    *
-   * Making changes to this setting has no effect when the corresponding
-   * subscription has already been created.
+   * If the publishing interval has not been set explicitly, the default value
+   * (500 ms) is returned.
    */
-  void configureSubscriptionPublishingInterval(const std::string &name,
-      double publishingInterval);
+  double getSubscriptionPublishingInterval(const std::string &name);
 
   /**
    * Reads a node's value. Throws an UaException if there is a problem.
@@ -305,6 +296,52 @@ public:
   void removeMonitoredItem(const std::string &subscriptionName,
       const UaNodeId &nodeId,
       std::shared_ptr<MonitoredItemCallback> const &callback);
+
+  /**
+   * Sets the lifetime count for the specified subscription.
+   *
+   * The lifetime count defines how many publishing intervals may pass without
+   * receiving a publishing request from the client before the server considers
+   * the client inactive and removes the subscription.
+   *
+   * In most cases, the default value will be fine and there will be no reason
+   * to change this setting.
+   *
+   * Making changes to this setting has no effect when the corresponding
+   * subscription has already been created.
+   */
+  void setSubscriptionLifetimeCount(const std::string &name,
+      std::uint32_t lifetimeCount);
+
+  /**
+   * Sets the max. keep-alive count for the specified subscription.
+   *
+   * The max. keep-alive count defines how many publishing intervals may pass
+   * without any notifications being sent to the client. If this number of
+   * intervals is exceeded, the server sends an empty notification to the client
+   * in order to let it know that the server is still active.
+   *
+   * In most cases, the default value will be fine and there will be no reason
+   * to change this setting.
+   *
+   * Making changes to this setting has no effect when the corresponding
+   * subscription has already been created.
+   */
+  void setSubscriptionMaxKeepAliveCount(const std::string &name,
+      std::uint32_t maxKeepAliveCount);
+
+  /**
+   * Sets the publishing interface for the specified subscription.
+   *
+   * The publishing interval defines the time (in milliseconds) that the server
+   * waits between checking whether there are any queued notifications for a
+   * subscription.
+   *
+   * Making changes to this setting has no effect when the corresponding
+   * subscription has already been created.
+   */
+  void setSubscriptionPublishingInterval(const std::string &name,
+      double publishingInterval);
 
   /**
    * Writes to a node's value. Throws an UaException if there is a problem.

@@ -77,22 +77,22 @@ void ServerConnection::addMonitoredItem(const std::string &subscriptionName,
   requestQueueCv.notify_all();
 }
 
-void ServerConnection::configureSubscriptionLifetimeCount(
-    const std::string &name, std::uint32_t lifetimeCount) {
+std::uint32_t ServerConnection::getSubscriptionLifetimeCount(
+    const std::string &name) {
   std::lock_guard<std::mutex> lock(mutex);
-  subscriptions[name].lifetimeCount = lifetimeCount;
+  return subscriptions[name].lifetimeCount;
 }
 
-void ServerConnection::configureSubscriptionMaxKeepAliveCount(
-    const std::string &name, std::uint32_t maxKeepAliveCount) {
+std::uint32_t ServerConnection::getSubscriptionMaxKeepAliveCount(
+    const std::string &name) {
   std::lock_guard<std::mutex> lock(mutex);
-  subscriptions[name].maxKeepAliveCount = maxKeepAliveCount;
+  return subscriptions[name].maxKeepAliveCount;
 }
 
-void ServerConnection::configureSubscriptionPublishingInterval(
-    const std::string &name, double publishingInterval) {
+double ServerConnection::getSubscriptionPublishingInterval(
+    const std::string &name) {
   std::lock_guard<std::mutex> lock(mutex);
-  subscriptions[name].publishingInterval = publishingInterval;
+  return subscriptions[name].publishingInterval;
 }
 
 UaVariant ServerConnection::read(const UaNodeId &nodeId) {
@@ -120,6 +120,24 @@ void ServerConnection::removeMonitoredItem(const std::string &subscriptionName,
     requestQueue.push_back(std::move(request));
   }
   requestQueueCv.notify_all();
+}
+
+void ServerConnection::setSubscriptionLifetimeCount(
+    const std::string &name, std::uint32_t lifetimeCount) {
+  std::lock_guard<std::mutex> lock(mutex);
+  subscriptions[name].lifetimeCount = lifetimeCount;
+}
+
+void ServerConnection::setSubscriptionMaxKeepAliveCount(
+    const std::string &name, std::uint32_t maxKeepAliveCount) {
+  std::lock_guard<std::mutex> lock(mutex);
+  subscriptions[name].maxKeepAliveCount = maxKeepAliveCount;
+}
+
+void ServerConnection::setSubscriptionPublishingInterval(
+    const std::string &name, double publishingInterval) {
+  std::lock_guard<std::mutex> lock(mutex);
+  subscriptions[name].publishingInterval = publishingInterval;
 }
 
 void ServerConnection::write(const UaNodeId &nodeId, const UaVariant &value) {
