@@ -236,6 +236,7 @@ void ServerConnection::activateSubscription(Subscription &subscription) {
   case UA_STATUSCODE_GOOD:
     subscription.subscriptionId = subscriptionId;
     subscription.active = true;
+    break;
   case UA_STATUSCODE_BADCOMMUNICATIONERROR:
   case UA_STATUSCODE_BADCONNECTIONCLOSED:
   case UA_STATUSCODE_BADSERVERNOTCONNECTED:
