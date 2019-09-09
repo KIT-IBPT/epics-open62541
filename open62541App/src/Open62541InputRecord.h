@@ -87,8 +87,6 @@ public:
       // the server anyway.
       std::uint32_t queueSize = 1;
       bool discardOldest = true;
-      // TODO DEBUG
-      std::printf("Using sampling interval %f.\n", samplingInterval);
       this->getServerConnection()->addMonitoredItem(
         subscriptionName, this->getRecordAddress().getNodeId(),
         monitoredItemCallback, samplingInterval, queueSize, discardOldest);
