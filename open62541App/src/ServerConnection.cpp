@@ -508,19 +508,21 @@ void ServerConnection::runConnectionThread() {
         break;
       }
     }
-    std::unique_lock<std::mutex> requestQueueLock(requestQueueMutex);
-    if (requestQueue.empty()) {
-      // If the request queue is empty, we sleep for one millisecond. After that
-      // time, we wake up in order to have the client process background
-      // activity (like processing notifications that might have arrived).
-      requestQueueCv.wait_for(requestQueueLock, std::chrono::milliseconds(1));
-      continue;
+    // We need to hold a lock on the mutex protecting access to the request
+    // queue while trying to retrieve the next request.
+    std::unique_ptr<Request> request;
+    {
+      std::unique_lock<std::mutex> requestQueueLock(requestQueueMutex);
+      if (requestQueue.empty()) {
+        // If the request queue is empty, we sleep for one millisecond. After that
+        // time, we wake up in order to have the client process background
+        // activity (like processing notifications that might have arrived).
+        requestQueueCv.wait_for(requestQueueLock, std::chrono::milliseconds(1));
+        continue;
+      }
+      request = std::move(requestQueue.front());
+      requestQueue.pop_front();
     }
-    auto request = std::move(requestQueue.front());
-    requestQueue.pop_front();
-    // From this point on, we do not need to hold a lock on the request queue
-    // mutex any longer.
-    requestQueueLock.release();
     // While processing the requests, we have to hold a lock on the general
     // mutex.
     std::lock_guard<std::mutex> lock(mutex);
