@@ -174,8 +174,17 @@ void ServerConnection::activateMonitoredItem(Subscription &subscription,
   // This method should only be called for a monitored item that has not been
   // activated yet.
   assert (!monitoredItem.active);
+  // UA_MonitoredItemCreateRequest_default does not copy the node ID before
+  // putting it inside the UA_MonitoredItemCreateRequest structure. This means
+  // that the node ID is going to be deallocated when the request structure is
+  // cleared by calling UA_MonitoredItemCreateRequest_clear later in this
+  // method. We cannot have this happen, so we have to copy the node ID before
+  // passing it to UA_MonitoredItemCreateRequest_default.
+  UA_NodeId copiedNodeId;
+  UA_NodeId_init(&copiedNodeId);
+  UA_NodeId_copy(&monitoredItem.nodeId.get(), &copiedNodeId);
   auto monitoredItemCreateRequest =
-    UA_MonitoredItemCreateRequest_default(monitoredItem.nodeId.get());
+    UA_MonitoredItemCreateRequest_default(copiedNodeId);
   // The monitoringMode is set to UA_MONITORINGMODE_REPORTING by default, which
   // is what we need. We configure the other parameters according to what was
   // requested by the user.
