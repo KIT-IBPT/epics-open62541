@@ -96,7 +96,11 @@ UaNodeId parseNodeId(const std::string &nodeIdString) {
     auto numString = nodeIdString.substr(commaPos + 1);
     unsigned long ns;
     try {
-      ns = std::stoul(nsString);
+      std::size_t convertedLength;
+      ns = std::stoul(nsString, &convertedLength);
+      if (convertedLength != nsString.length()) {
+        throw std::invalid_argument("Only partial string has been converted.");
+      }
     } catch (std::invalid_argument&) {
       throw std::invalid_argument(
           std::string("Invalid namespace index in node ID: ") + nodeIdString);
@@ -115,7 +119,11 @@ UaNodeId parseNodeId(const std::string &nodeIdString) {
         "unsigned long data-type is not large enough to hold a uint32_t");
     unsigned long num;
     try {
-      num = std::stoul(numString);
+      std::size_t convertedLength;
+      num = std::stoul(numString, &convertedLength);
+      if (convertedLength != numString.length()) {
+        throw std::invalid_argument("Only partial string has been converted.");
+      }
     } catch (std::invalid_argument&) {
       throw std::invalid_argument(
           std::string("Invalid numeric ID in node ID: ") + nodeIdString);
@@ -135,7 +143,11 @@ UaNodeId parseNodeId(const std::string &nodeIdString) {
     auto idString = nodeIdString.substr(commaPos + 1);
     unsigned long ns;
     try {
-      ns = std::stoul(nsString);
+      std::size_t convertedLength;
+      ns = std::stoul(nsString, &convertedLength);
+      if (convertedLength != nsString.length()) {
+        throw std::invalid_argument("Only partial string has been converted.");
+      }
     } catch (std::invalid_argument&) {
       throw std::invalid_argument(
           std::string("Invalid namespace index in node ID: ") + nodeIdString);
@@ -156,9 +168,12 @@ UaNodeId parseNodeId(const std::string &nodeIdString) {
 
 }
 
-Open62541RecordAddress::Open62541RecordAddress(const std::string &addressString) :
-    conversionMode(ConversionMode::automatic), dataType(DataType::unspecified), readOnInit(
-        true) {
+Open62541RecordAddress::Open62541RecordAddress(
+    const std::string &addressString) :
+    conversionMode(ConversionMode::automatic), dataType(DataType::unspecified),
+    readOnInit(true),
+    samplingInterval(std::numeric_limits<double>::quiet_NaN()),
+    subscription("default") {
   const std::string delimiters(" \t\n\v\f\r");
   std::size_t tokenStart, tokenLength;
   // First, read the device name.
@@ -209,6 +224,21 @@ Open62541RecordAddress::Open62541RecordAddress(const std::string &addressString)
                 std::string("Unrecognized conversion mode in record address: ")
                     + optionValue);
           }
+        } else if (startsWithIgnoreCase(optionToken, "sampling_interval=")) {
+          std::string optionValue = optionToken.substr(18);
+          try {
+            std::size_t convertedLength;
+            this->samplingInterval = std::stod(optionValue, &convertedLength);
+            if (convertedLength != optionValue.length()) {
+              throw std::invalid_argument("Only partial string has been converted.");
+            }
+          } catch (std::invalid_argument&) {
+            throw std::invalid_argument(
+              std::string("Invalid sampling_interval: ") + optionValue);
+          }
+        } else if (startsWithIgnoreCase(optionToken, "subscription=")) {
+          std::string optionValue = optionToken.substr(13);
+          this->subscription = optionValue;
         } else if (i != tokenStart + 1) {
           // An empty options token is only allowed if the whole options string
           // is empty.

@@ -1,6 +1,6 @@
 /*
- * Copyright 2017 aquenos GmbH.
- * Copyright 2017 Karlsruhe Institute of Technology.
+ * Copyright 2017-2019 aquenos GmbH.
+ * Copyright 2017-2019 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -50,6 +50,33 @@
 using namespace open62541::epics;
 
 namespace {
+
+template<typename RecordDeviceSupportType>
+long getInterruptInfo(int command, ::dbCommon *record, ::IOSCANPVT *iopvt) {
+  if (!record) {
+    errorExtendedPrintf(
+        "Cannot get interrupt info: Pointer to record structure is null.");
+    return -1;
+  }
+  try {
+    RecordDeviceSupportType *deviceSupport =
+        static_cast<RecordDeviceSupportType *>(record->dpvt);
+    if (!deviceSupport) {
+      throw std::runtime_error(
+          "Pointer to device support data structure is null.");
+    }
+    deviceSupport->getInterruptInfo(command, iopvt);
+  } catch (std::exception &e) {
+    errorExtendedPrintf("%s Getting interrupt info failed: %s", record->name,
+        e.what());
+    return -1;
+  } catch (...) {
+    errorExtendedPrintf("%s Getting interrupt info failed: Unknown error.",
+        record->name);
+    return -1;
+  }
+  return 0;
+}
 
 template<typename RecordDeviceSupportType, typename RecordType>
 long initRecord(void *recordVoid) {
@@ -130,14 +157,6 @@ long initRecord<Open62541AoRecord, ::aoRecord>(void *recordVoid) {
 }
 
 template<typename RecordDeviceSupportType>
-long getInterruptInfo(int command, dbCommon *record, ::IOSCANPVT *iopvt) {
-  errorExtendedPrintf(
-      "I/O Intr mode is currently not supported by this device support.");
-  *iopvt = nullptr;
-  return -1;
-}
-
-template<typename RecordDeviceSupportType>
 long processRecord(void *recordVoid) {
   if (!recordVoid) {
     errorExtendedPrintf(
@@ -215,8 +234,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN read;
-} devAaiOpen62541 = { 5, nullptr, nullptr, initRecord<Open62541AaiRecord,
-    ::aaiRecord>, nullptr, processRecord<Open62541AaiRecord> };
+} devAaiOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541AaiRecord, ::aaiRecord>,
+  getInterruptInfo<Open62541AaiRecord>,
+  processRecord<Open62541AaiRecord>
+};
 epicsExportAddress(dset, devAaiOpen62541);
 
 /**
@@ -229,8 +254,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN write;
-} devAaoOpen62541 = { 5, nullptr, nullptr, initRecord<Open62541AaoRecord,
-    ::aaoRecord>, nullptr, processRecord<Open62541AaoRecord> };
+} devAaoOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541AaoRecord, ::aaoRecord>,
+  nullptr,
+  processRecord<Open62541AaoRecord>
+};
 epicsExportAddress(dset, devAaoOpen62541);
 
 /**
@@ -244,8 +275,15 @@ struct {
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN read;
   DEVSUPFUN special_linconv;
-} devAiOpen62541 = { 6, nullptr, nullptr, initRecord<Open62541AiRecord,
-    ::aiRecord>, nullptr, processRecord<Open62541AiRecord>, nullptr };
+} devAiOpen62541 = {
+  6,
+  nullptr,
+  nullptr,
+  initRecord<Open62541AiRecord, ::aiRecord>,
+  getInterruptInfo<Open62541AiRecord>,
+  processRecord<Open62541AiRecord>,
+  nullptr
+};
 epicsExportAddress(dset, devAiOpen62541);
 
 /**
@@ -259,8 +297,15 @@ struct {
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN write;
   DEVSUPFUN special_linconv;
-} devAoOpen62541 = { 6, nullptr, nullptr, initRecord<Open62541AoRecord,
-    ::aoRecord>, nullptr, processRecord<Open62541AoRecord>, nullptr };
+} devAoOpen62541 = {
+  6,
+  nullptr,
+  nullptr,
+  initRecord<Open62541AoRecord, ::aoRecord>,
+  nullptr,
+  processRecord<Open62541AoRecord>,
+  nullptr
+};
 epicsExportAddress(dset, devAoOpen62541);
 
 /**
@@ -273,8 +318,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN read;
-} devBiOpen62541 = { 5, nullptr, nullptr, initRecord<Open62541BiRecord,
-    ::biRecord>, nullptr, processRecord<Open62541BiRecord> };
+} devBiOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541BiRecord, ::biRecord>,
+  getInterruptInfo<Open62541BiRecord>,
+  processRecord<Open62541BiRecord>
+};
 epicsExportAddress(dset, devBiOpen62541);
 
 /**
@@ -287,8 +338,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN write;
-} devBoOpen62541 = { 5, nullptr, nullptr, initRecord<Open62541BoRecord,
-    ::boRecord>, nullptr, processRecord<Open62541BoRecord> };
+} devBoOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541BoRecord, ::boRecord>,
+  nullptr,
+  processRecord<Open62541BoRecord>
+};
 epicsExportAddress(dset, devBoOpen62541);
 
 /**
@@ -301,8 +358,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN read;
-} devLonginOpen62541 = { 5, nullptr, nullptr, initRecord<Open62541LonginRecord,
-    ::longinRecord>, nullptr, processRecord<Open62541LonginRecord> };
+} devLonginOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541LonginRecord, ::longinRecord>,
+  getInterruptInfo<Open62541LonginRecord>,
+  processRecord<Open62541LonginRecord>
+};
 epicsExportAddress(dset, devLonginOpen62541);
 
 /**
@@ -315,9 +378,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN write;
-} devLongoutOpen62541 = { 5, nullptr, nullptr, initRecord<
-    Open62541LongoutRecord, ::longoutRecord>, nullptr, processRecord<
-    Open62541LongoutRecord> };
+} devLongoutOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541LongoutRecord, ::longoutRecord>,
+  nullptr,
+  processRecord<Open62541LongoutRecord>
+};
 epicsExportAddress(dset, devLongoutOpen62541);
 
 /**
@@ -330,8 +398,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN read;
-} devMbbiOpen62541 = { 5, nullptr, nullptr, initRecord<Open62541MbbiRecord,
-    ::mbbiRecord>, nullptr, processRecord<Open62541MbbiRecord> };
+} devMbbiOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541MbbiRecord, ::mbbiRecord>,
+  getInterruptInfo<Open62541MbbiRecord>,
+  processRecord<Open62541MbbiRecord>
+};
 epicsExportAddress(dset, devMbbiOpen62541);
 
 /**
@@ -344,8 +418,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN write;
-} devMbboOpen62541 = { 5, nullptr, nullptr, initRecord<Open62541MbboRecord,
-    ::mbboRecord>, nullptr, processRecord<Open62541MbboRecord> };
+} devMbboOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541MbboRecord, ::mbboRecord>,
+  nullptr,
+  processRecord<Open62541MbboRecord>
+};
 epicsExportAddress(dset, devMbboOpen62541);
 
 /**
@@ -358,9 +438,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN read;
-} devMbbiDirectOpen62541 = { 5, nullptr, nullptr, initRecord<
-    Open62541MbbiDirectRecord, ::mbbiDirectRecord>, nullptr, processRecord<
-    Open62541MbbiDirectRecord> };
+} devMbbiDirectOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541MbbiDirectRecord, ::mbbiDirectRecord>,
+  getInterruptInfo<Open62541MbbiDirectRecord>,
+  processRecord<Open62541MbbiDirectRecord>
+};
 epicsExportAddress(dset, devMbbiDirectOpen62541);
 
 /**
@@ -373,9 +458,14 @@ struct {
   DEVSUPFUN init_record;
   DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
   DEVSUPFUN write;
-} devMbboDirectOpen62541 = { 5, nullptr, nullptr, initRecord<
-    Open62541MbboDirectRecord, ::mbboDirectRecord>, nullptr, processRecord<
-    Open62541MbboDirectRecord> };
+} devMbboDirectOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541MbboDirectRecord, ::mbboDirectRecord>,
+  nullptr,
+  processRecord<Open62541MbboDirectRecord>
+};
 epicsExportAddress(dset, devMbboDirectOpen62541);
 
-}
+} // extern "C"

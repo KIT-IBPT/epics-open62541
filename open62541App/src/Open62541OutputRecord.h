@@ -93,7 +93,7 @@ protected:
   UaVariant readRecordValueGeneric(const ValueFieldType &valueField,
       Open62541RecordAddress::DataType defaultDataType);
 
-  virtual void processPrepare();
+  virtual bool processPrepare();
 
   virtual void processComplete();
 
@@ -245,11 +245,12 @@ UaVariant Open62541OutputRecord<RecordType>::readRecordValueGeneric(
 }
 
 template<typename RecordType>
-void Open62541OutputRecord<RecordType>::processPrepare() {
+bool Open62541OutputRecord<RecordType>::processPrepare() {
   UaVariant value = this->readRecordValue();
   auto callback = std::make_shared<CallbackImpl>(*this);
   this->getServerConnection()->writeAsync(
       this->getRecordAddress().getNodeId(), value, callback);
+  return true;
 }
 
 template<typename RecordType>

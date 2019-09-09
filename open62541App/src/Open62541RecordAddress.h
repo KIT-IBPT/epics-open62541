@@ -206,6 +206,31 @@ public:
   }
 
   /**
+   * Returns the sampling interval (in millisecond) that shall be used when
+   * monitoring the node. For output records or input records that do not
+   * operate in monitoring mode (SCAN is not set to I/O Intr), this setting does
+   * not have any effects.
+   *
+   * If the address does not specify a sampling interval, NaN is returned. This
+   * means that the sampling interval will be set to be the same as the
+   * publishing interval of the associated subscription.
+   */
+  inline double getSamplingInterval() const {
+    return samplingInterval;
+  }
+
+  /**
+   * Returns the subscription that shal lbe used when monitoring the node. For
+   * output records or innput records that do not operate in monitoring mode
+   * (SCAN is not set to I/O Intr), this setting does not have any effects.
+   *
+   * If the address does not specify a subscription, "default" is returned.
+   */
+  inline std::string const &getSubscription() const {
+    return subscription;
+  }
+
+  /**
    * Tells whether the record should be initialized with the value read from the
    * device. If <code>true</code>, the current value is read once during record
    * initialization. If <code>false</code>, the value is never read. This flag
@@ -222,8 +247,9 @@ private:
   ConversionMode conversionMode;
   DataType dataType;
   UaNodeId nodeId;
-
   bool readOnInit;
+  double samplingInterval;
+  std::string subscription;
 
 };
 

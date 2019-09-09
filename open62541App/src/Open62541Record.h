@@ -112,10 +112,12 @@ protected:
 
   /**
    * Called by the default implementation of the {@link #processRecord()}
-   * method. This method should queue an asynchronous action that calls
-   * {@link #scheduleProcessing()} when it finishes.
+   * method. If processing cannot be completed right away, this method should
+   * queue an asynchronous action that calls {@link #scheduleProcessing()} when
+   * it finishes and return true. If processing is completed right away, this
+   * method should return false.
    */
-  virtual void processPrepare() = 0;
+  virtual bool processPrepare() = 0;
 
   /**
    * Called by the default implementation of the {@link #processRecord()} method.
@@ -211,8 +213,9 @@ void Open62541Record<RecordType>::processRecord() {
     this->record->pact = false;
     processComplete();
   } else {
-    processPrepare();
-    this->record->pact = true;
+    if (processPrepare()) {
+      this->record->pact = true;
+    }
   }
 }
 

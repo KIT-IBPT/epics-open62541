@@ -30,6 +30,7 @@
 #ifndef OPEN62541_EPICS_INPUT_RECORD_H
 #define OPEN62541_EPICS_INPUT_RECORD_H
 
+#include <mutex>
 #include <string>
 
 #include <alarm.h>
@@ -47,6 +48,58 @@ namespace epics {
 template<typename RecordType>
 class Open62541InputRecord: public Open62541Record<RecordType> {
 
+public:
+
+  /**
+   * Called when a record is switched to or from "I/O Intr" mode. When enabling
+   * the I/O Intr mode, command is 0. Otherwise, it is 1. This method initializes
+   * the passed IOSCANPVT structure with the information from the device supports
+   * IOSCANPVT structure.
+   *
+   * Effectively, this method enables or disables the use of a monitored item
+   * (in contrast to the regular polling) for reading OPC UA node backing the
+   * record.
+   */
+  virtual void getInterruptInfo(int command, ::IOSCANPVT *iopvt) {
+    // A command value of 0 means enable I/O Intr mode, a value of 1 means
+    // disable.
+    // We have to remember whether monitoring is enabled. We have to update this
+    // flag while holding a lock on the mutex because this flag is also accessed
+    // by the monitor callback. Note that we do this before adding or removing
+    // the monitored item. If we did it later, we might receive a callback with
+    // the flag still being in the wrong state.
+    {
+      std::lock_guard<std::mutex> lock(monitoringMutex);
+      monitoringEnabled = !command;
+    }
+    std::string const &subscriptionName =
+      this->getRecordAddress().getSubscription();
+    if (command == 0) {
+      double samplingInterval = this->getRecordAddress().getSamplingInterval();
+      if (std::isnan(samplingInterval)) {
+        samplingInterval =
+          this->getServerConnection()->getSubscriptionPublishingInterval(
+            subscriptionName);
+      }
+      // We use a fixed queue size of one and set the discard-oldest flag. As we
+      // do not use a queue for the record and notifications are delivered in
+      // bursts, we would most likely discard any additional items delivered by
+      // the server anyway.
+      std::uint32_t queueSize = 1;
+      bool discardOldest = true;
+      // TODO DEBUG
+      std::printf("Using sampling interval %f.\n", samplingInterval);
+      this->getServerConnection()->addMonitoredItem(
+        subscriptionName, this->getRecordAddress().getNodeId(),
+        monitoredItemCallback, samplingInterval, queueSize, discardOldest);
+    } else {
+      this->getServerConnection()->removeMonitoredItem(
+        subscriptionName, this->getRecordAddress().getNodeId(),
+        monitoredItemCallback);
+    }
+    *iopvt = this->ioIntrModeScanPvt;
+  }
+
 protected:
 
   /**
@@ -54,7 +107,11 @@ protected:
    * instance.
    */
   Open62541InputRecord(RecordType *record) :
-      Open62541Record<RecordType>(record, record->inp), readSuccessful(false) {
+      Open62541Record<RecordType>(record, record->inp),
+      monitoredItemCallback(std::make_shared<MonitoredItemCallbackImpl>(*this)),
+      monitoringEnabled(false), monitoringValuePending(false),
+      readSuccessful(false) {
+    ::scanIoInit(&this->ioIntrModeScanPvt);
   }
 
   /**
@@ -63,7 +120,7 @@ protected:
   virtual ~Open62541InputRecord() {
   }
 
-  virtual void processPrepare();
+  virtual bool processPrepare();
 
   virtual void processComplete();
 
@@ -83,8 +140,18 @@ protected:
 
 private:
 
-  struct CallbackImpl: ServerConnection::ReadCallback {
-    CallbackImpl(Open62541InputRecord &record);
+  struct MonitoredItemCallbackImpl : ServerConnection::MonitoredItemCallback {
+    MonitoredItemCallbackImpl(Open62541InputRecord &record);
+    void success(const UaNodeId &nodeId, const UaVariant &value);
+    void failure(const UaNodeId &nodeId, UA_StatusCode statusCode);
+
+    // In EPICS, records are never destroyed. Therefore, we can safely keep a
+    // reference to the device support object.
+    Open62541InputRecord &record;
+  };
+
+  struct ReadCallbackImpl: ServerConnection::ReadCallback {
+    ReadCallbackImpl(Open62541InputRecord &record);
     void success(const UaNodeId &nodeId, const UaVariant &value);
     void failure(const UaNodeId &nodeId, UA_StatusCode statusCode);
 
@@ -99,17 +166,36 @@ private:
   Open62541InputRecord &operator=(const Open62541InputRecord &) = delete;
   Open62541InputRecord &operator=(Open62541InputRecord &&) = delete;
 
+  ::IOSCANPVT ioIntrModeScanPvt;
+  std::shared_ptr<MonitoredItemCallbackImpl> monitoredItemCallback;
+  bool monitoringEnabled;
+  bool monitoringValuePending;
+  std::mutex monitoringMutex;
+  std::string readErrorMessage;
   bool readSuccessful;
   UaVariant readValue;
-  std::string readErrorMessage;
 
 };
 
 template<typename RecordType>
-void Open62541InputRecord<RecordType>::processPrepare() {
-  auto callback = std::make_shared<CallbackImpl>(*this);
+bool Open62541InputRecord<RecordType>::processPrepare() {
+  // If there is a value that has been received through a monitor callback, we
+  // are operating in I/O Intr mode and have to process this value instead of
+  // polling the server to retrieve a new value. We need to acquire the mutex
+  // because monitoringValuePending and also the actual value might be changed
+  // concurrently by the callback.
+  {
+    std::lock_guard<std::mutex> lock(monitoringMutex);
+    if (monitoringValuePending) {
+      monitoringValuePending = false;
+      processComplete();
+      return false;
+    }
+  }
+  auto callback = std::make_shared<ReadCallbackImpl>(*this);
   this->getServerConnection()->readAsync(this->getRecordAddress().getNodeId(),
       callback);
+  return true;
 }
 
 template<typename RecordType>
@@ -126,13 +212,87 @@ void Open62541InputRecord<RecordType>::processComplete() {
 }
 
 template<typename RecordType>
-Open62541InputRecord<RecordType>::CallbackImpl::CallbackImpl(
+Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::MonitoredItemCallbackImpl(
     Open62541InputRecord &record) :
     record(record) {
 }
 
 template<typename RecordType>
-void Open62541InputRecord<RecordType>::CallbackImpl::success(
+void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::success(
+    const UaNodeId &nodeId, const UaVariant &value) {
+  // Notifications happen asynchronously, so we have to hold a lock on the mutex
+  // in order to avoid a race condition when getInterruptInfo or process are
+  // being called concurrently by a different thread.
+  std::lock_guard<std::mutex> lock(record.monitoringMutex);
+  // It could happen that we receive notifications even though the monitored
+  // item has been removed. The reason for this is that removal of the monitored
+  // item happens asynchronously. For this reason, we check whether monitoring
+  // is still enabled for this record and discard notifications if it is not.
+  if (!record.monitoringEnabled) {
+    return;
+  }
+  record.readSuccessful = true;
+  record.readValue = value;
+  // If we have previously called scanIoRequest, but this has not been processed
+  // yet, we do not want to call scanIoRequest again. The newest value will be
+  // processed when the record is finally processed.
+  if (record.monitoringValuePending) {
+    return;
+  }
+  // There is a small chance that scanIoRequest will fail because the queues are
+  // already full (it will return zero in that case). In this case, we do not
+  // set the monitoringValuePending flag because we want to call scanIoRequest
+  // again when we receive another notification.
+  if (::scanIoRequest(record.ioIntrModeScanPvt)) {
+    record.monitoringValuePending = true;
+  }
+}
+
+template<typename RecordType>
+void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::failure(
+    const UaNodeId &nodeId, UA_StatusCode statusCode) {
+  // Notifications happen asynchronously, so we have to hold a lock on the mutex
+  // in order to avoid a race condition when getInterruptInfo or process are
+  // being called concurrently by a different thread.
+  std::lock_guard<std::mutex> lock(record.monitoringMutex);
+  // It could happen that we receive notifications even though the monitored
+  // item has been removed. The reason for this is that removal of the monitored
+  // item happens asynchronously. For this reason, we check whether monitoring
+  // is still enabled for this record and discard notifications if it is not.
+  if (!record.monitoringEnabled) {
+    return;
+  }
+  record.readSuccessful = false;
+  try {
+    record.readErrorMessage = std::string("Error monitoring node: ")
+        + UA_StatusCode_name(statusCode);
+  } catch (...) {
+    // We want to schedule processing of the record even if we cannot assemble
+    // the error message for some obscure reason.
+  }
+  // If we have previously called scanIoRequest, but this has not been processed
+  // yet, we do not want to call scanIoRequest again. The newest value will be
+  // processed when the record is finally processed.
+  if (record.monitoringValuePending) {
+    return;
+  }
+  // There is a small chance that scanIoRequest will fail because the queues are
+  // already full (it will return zero in that case). In this case, we do not
+  // set the monitoringValuePending flag because we want to call scanIoRequest
+  // again when we receive another notification.
+  if (::scanIoRequest(record.ioIntrModeScanPvt)) {
+    record.monitoringValuePending = true;
+  }
+}
+
+template<typename RecordType>
+Open62541InputRecord<RecordType>::ReadCallbackImpl::ReadCallbackImpl(
+    Open62541InputRecord &record) :
+    record(record) {
+}
+
+template<typename RecordType>
+void Open62541InputRecord<RecordType>::ReadCallbackImpl::success(
     const UaNodeId &nodeId, const UaVariant &value) {
   record.readSuccessful = true;
   record.readValue = value;
@@ -140,7 +300,7 @@ void Open62541InputRecord<RecordType>::CallbackImpl::success(
 }
 
 template<typename RecordType>
-void Open62541InputRecord<RecordType>::CallbackImpl::failure(
+void Open62541InputRecord<RecordType>::ReadCallbackImpl::failure(
     const UaNodeId &nodeId, UA_StatusCode statusCode) {
   record.readSuccessful = false;
   try {
