@@ -175,7 +175,7 @@ public:
   /**
    * Returns a string representation of this node ID.
    */
-  inline std::string toString() const;
+  std::string toString() const;
 
 private:
 

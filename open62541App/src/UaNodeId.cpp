@@ -60,7 +60,7 @@ UaNodeId &UaNodeId::operator=(UaNodeId const &other) {
   return *this;
 }
 
-inline std::string UaNodeId::toString() const {
+std::string UaNodeId::toString() const {
     UA_String tempStr;
     UA_String_init(&tempStr);
   auto status = UA_NodeId_toString(&this->id, &tempStr);
