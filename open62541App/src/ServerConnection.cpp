@@ -461,6 +461,14 @@ bool ServerConnection::resetConnection() {
     // there was an error, the next logical step would be resetting the client.
     UA_Client_disconnect(client);
     UA_Client_reset(client);
+    // After resetting the client, we have to apply the configuration again.
+    auto config = UA_Client_getConfig(this->client);
+    auto statusCode = UA_ClientConfig_setDefault(config);
+    if (statusCode) {
+      throw UaException(statusCode);
+    }
+    // We also have to reset the status of all subscriptions and monitored
+    // items.
     for (auto &subscriptionEntry : subscriptions) {
       auto &subscription = subscriptionEntry.second;
       subscription.active = false;
