@@ -394,8 +394,8 @@ bool ServerConnection::maybeResetConnection(UA_StatusCode statusCode) {
   UA_Client_reset(client);
   // After resetting the client, we have to apply the configuration again.
   auto config = UA_Client_getConfig(this->client);
-  statusCode = UA_ClientConfig_setDefault(config);
-  if (statusCode) {
+  auto  statusCodeClientConfig = UA_ClientConfig_setDefault(config);
+  if (statusCodeClientConfig) {
     throw UaException(statusCode);
   }
   // We also have to reset the status of all subscriptions and monitored items.
@@ -405,9 +405,20 @@ bool ServerConnection::maybeResetConnection(UA_StatusCode statusCode) {
     for (auto &monitoredItemsEntry : subscription.monitoredItems) {
       auto &monitoredItems = monitoredItemsEntry.second;
       for (auto &monitoredItem : monitoredItems) {
-        // TODO We might have to notify the callback that the connection is
-        // broken.
-        monitoredItem.active = false;
+        // If the monitored item was active before, we call the failure callback
+        // so that the watching code knows that monitoring notifications are not
+        // going to be received from now on.
+        if (monitoredItem.active) {
+          monitoredItem.active = false;
+          try {
+            monitoredItem.callback->failure(monitoredItem.nodeId, statusCode);
+          } catch (...) {
+            // We catch all exceptions because an exception in a callback should
+            // never stop the connection thread.
+            errorExtendedPrintf(
+                "Exception from callback caught in connection thread.");
+          }
+        }
       }
     }
   }
