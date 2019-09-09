@@ -477,11 +477,11 @@ private:
   void deactivateMonitoredItem(Subscription &subscription,
       MonitoredItem &monitoredItem);
   void deactivateSubscription(Subscription &subscription);
+  bool maybeResetConnection(UA_StatusCode statusCode);
   UaVariant readInternal(const UaNodeId &nodeId);
   void removeMonitoredItemInternal(const std::string &subscriptionName,
       const UaNodeId &nodeId,
       std::shared_ptr<MonitoredItemCallback> const &callback);
-  bool resetConnection();
   void runConnectionThread();
   void writeInternal(const UaNodeId &nodeId, const UaVariant &value);
 

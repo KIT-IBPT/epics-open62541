@@ -204,25 +204,13 @@ void ServerConnection::activateMonitoredItem(Subscription &subscription,
   auto monitoredItemId = monitoredItemCreateResult.monitoredItemId;
   UA_MonitoredItemCreateRequest_clear(&monitoredItemCreateRequest);
   UA_MonitoredItemCreateResult_clear(&monitoredItemCreateResult);
-  switch (status) {
-  case UA_STATUSCODE_GOOD:
+  if (status == UA_STATUSCODE_GOOD) {
     monitoredItem.monitoredItemId = monitoredItemId;
     monitoredItem.active = true;
-    break;
-  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
-  case UA_STATUSCODE_BADCONNECTIONCLOSED:
-  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
-  case UA_STATUSCODE_BADSESSIONIDINVALID:
-    // For certain errors, we try to reconnect. If the reconnect attempt fails
-    // or the monitored item cannot not be activated as part of that attempt, we
-    // still throw an exception.
-    if (!resetConnection() || !monitoredItem.active) {
+  } else {
+    if (!maybeResetConnection(status) || !monitoredItem.active) {
       throw UaException(status);
     }
-    break;
-  default:
-    // For all other errors, we immediately throw an exception.
-    throw UaException(status);
   }
 }
 
@@ -241,25 +229,16 @@ void ServerConnection::activateSubscription(Subscription &subscription) {
   auto status = createSubscriptionResponse.responseHeader.serviceResult;
   UA_CreateSubscriptionRequest_clear(&createSubscriptionRequest);
   UA_CreateSubscriptionResponse_clear(&createSubscriptionResponse);
-  switch (status) {
-  case UA_STATUSCODE_GOOD:
+  if (status == UA_STATUSCODE_GOOD) {
     subscription.subscriptionId = subscriptionId;
     subscription.active = true;
-    break;
-  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
-  case UA_STATUSCODE_BADCONNECTIONCLOSED:
-  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
-  case UA_STATUSCODE_BADSESSIONIDINVALID:
+  } else {
     // For certain errors, we try to reconnect. If the reconnect attempt fails
     // or the subscription cannot not be activated as part of that attempt, we
     // still throw an exception.
-    if (!resetConnection() || !subscription.active) {
+    if (!maybeResetConnection(status) || !subscription.active) {
       throw UaException(status);
     }
-    break;
-  default:
-    // For all other errors, we immediately throw an exception.
-    throw UaException(status);
   }
 }
 
@@ -396,19 +375,54 @@ void ServerConnection::deactivateSubscription(Subscription &subscription) {
   subscription.active = false;
 }
 
+bool ServerConnection::maybeResetConnection(UA_StatusCode statusCode) {
+  // We only try to reset the connection for specific status codes. For other
+  // status codes resetting the connection is most likely not going to help
+  // anyway.
+  switch (statusCode) {
+  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
+  case UA_STATUSCODE_BADCONNECTIONCLOSED:
+  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
+  case UA_STATUSCODE_BADSESSIONIDINVALID:
+    break;
+  default:
+    return false;
+  }
+  // We do not check the result of UA_Client_disconnect on purpose: Even if
+  // there was an error, the next logical step would be resetting the client.
+  UA_Client_disconnect(client);
+  UA_Client_reset(client);
+  // After resetting the client, we have to apply the configuration again.
+  auto config = UA_Client_getConfig(this->client);
+  statusCode = UA_ClientConfig_setDefault(config);
+  if (statusCode) {
+    throw UaException(statusCode);
+  }
+  // We also have to reset the status of all subscriptions and monitored items.
+  for (auto &subscriptionEntry : subscriptions) {
+    auto &subscription = subscriptionEntry.second;
+    subscription.active = false;
+    for (auto &monitoredItemsEntry : subscription.monitoredItems) {
+      auto &monitoredItems = monitoredItemsEntry.second;
+      for (auto &monitoredItem : monitoredItems) {
+        // TODO We might have to notify the callback that the connection is
+        // broken.
+        monitoredItem.active = false;
+      }
+    }
+  }
+  return connect();
+}
+
 UaVariant ServerConnection::readInternal(const UaNodeId &nodeId) {
   UA_StatusCode status;
   UA_Variant targetValue;
   UA_Variant_init(&targetValue);
   status = UA_Client_readValueAttribute(client, nodeId.get(), &targetValue);
-  switch (status) {
-  case UA_STATUSCODE_GOOD:
+  if (status == UA_STATUSCODE_GOOD) {
     return UaVariant(std::move(targetValue));
-  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
-  case UA_STATUSCODE_BADCONNECTIONCLOSED:
-  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
-  case UA_STATUSCODE_BADSESSIONIDINVALID:
-    if (resetConnection()) {
+  } else {
+    if (maybeResetConnection(status)) {
       status = UA_Client_readValueAttribute(client, nodeId.get(), &targetValue);
       if (status == UA_STATUSCODE_GOOD) {
         return UaVariant(std::move(targetValue));
@@ -420,9 +434,6 @@ UaVariant ServerConnection::readInternal(const UaNodeId &nodeId) {
       UA_Variant_clear(&targetValue);
       throw UaException(status);
     }
-    break;
-  default:
-    throw UaException(status);
   }
 }
 
@@ -466,34 +477,6 @@ void ServerConnection::removeMonitoredItemInternal(
   }
 }
 
-bool ServerConnection::resetConnection() {
-      // We do not check the result of UA_Client_disconnect on purpose: Even if
-    // there was an error, the next logical step would be resetting the client.
-    UA_Client_disconnect(client);
-    UA_Client_reset(client);
-    // After resetting the client, we have to apply the configuration again.
-    auto config = UA_Client_getConfig(this->client);
-    auto statusCode = UA_ClientConfig_setDefault(config);
-    if (statusCode) {
-      throw UaException(statusCode);
-    }
-    // We also have to reset the status of all subscriptions and monitored
-    // items.
-    for (auto &subscriptionEntry : subscriptions) {
-      auto &subscription = subscriptionEntry.second;
-      subscription.active = false;
-      for (auto &monitoredItemsEntry : subscription.monitoredItems) {
-        auto &monitoredItems = monitoredItemsEntry.second;
-        for (auto &monitoredItem : monitoredItems) {
-          // TODO We might have to notify the callback that the connection is
-          // broken.
-          monitoredItem.active = false;
-        }
-      }
-    }
-    return connect();
-}
-
 void ServerConnection::runConnectionThread() {
   while (!shutdownRequested.load(std::memory_order_acquire)) {
     {
@@ -504,18 +487,9 @@ void ServerConnection::runConnectionThread() {
       // being held.
       std::lock_guard<std::mutex> lock(mutex);
       auto status = UA_Client_run_iterate(client, 0);
-      // Certain status codes indicate that the connection might have broken
-      // down and should be reestablished. In all other cases, we simply ignore
-      // errors here.
-      switch (status) {
-      case UA_STATUSCODE_BADCOMMUNICATIONERROR:
-      case UA_STATUSCODE_BADCONNECTIONCLOSED:
-      case UA_STATUSCODE_BADSERVERNOTCONNECTED:
-      case UA_STATUSCODE_BADSESSIONIDINVALID:
-        resetConnection();
-        break;
-      default:
-        break;
+      // If there is an error, we reset the connection for certain status codes.
+      if (status != UA_STATUSCODE_GOOD) {
+        maybeResetConnection(status);
       }
     }
     // We need to hold a lock on the mutex protecting access to the request
@@ -615,14 +589,8 @@ void ServerConnection::writeInternal(const UaNodeId &nodeId,
     const UaVariant &value) {
   UA_StatusCode status;
   status = UA_Client_writeValueAttribute(client, nodeId.get(), &value.get());
-  switch (status) {
-  case UA_STATUSCODE_GOOD:
-    return;
-  case UA_STATUSCODE_BADCOMMUNICATIONERROR:
-  case UA_STATUSCODE_BADCONNECTIONCLOSED:
-  case UA_STATUSCODE_BADSERVERNOTCONNECTED:
-  case UA_STATUSCODE_BADSESSIONIDINVALID:
-    if (resetConnection()) {
+  if (status != UA_STATUSCODE_GOOD) {
+    if (maybeResetConnection(status)) {
       status = UA_Client_writeValueAttribute(client, nodeId.get(), &value.get());
       if (status != UA_STATUSCODE_GOOD) {
         throw UaException(status);
@@ -630,9 +598,6 @@ void ServerConnection::writeInternal(const UaNodeId &nodeId,
     } else {
       throw UaException(status);
     }
-    break;
-  default:
-    throw UaException(status);
   }
 }
 
