@@ -17,14 +17,18 @@ Features
 * Connect to multiple OPC UA servers.
 * Automatic reconnection handling.
 * Read and write OPC UA process variables.
+* Monitor OPC UA process variables for changes (subscriptions / monitored
+  items).
 
 **Missing features:**
 
-* Subscriptions (only polling is supported so far).
 * Support for string type (only numeric data-types are supported).
 * Bi-directional process variables (output records are initialized once on
   startup, but do not receive updates when the variable changes on the server).
 * Support for GUID-based node IDs.
+* Monitoring nodes at a sampling rate that is higher than the publishing
+  interval (using queueing).
+* Using server-provided time-stamps when monitoring nodes.
 
 Installation
 ------------
@@ -46,6 +50,8 @@ path to the `configure/RELEASE` file of the IOC (e.g.
 library and DBD file to the IOCs `Makefile` (e.g. `xxx_DBD += open62541.dbd` and
 `xxx_LIBS += opent62541`).
 
+### Connecting to a server
+
 In the IOC's st.cmd, one can connect to an OPC UA server using the following
 command:
 
@@ -57,6 +63,8 @@ If the OPC UA server does not require authentication, an empty string should be
 passed for the username and password. In this example, `C0` is the identifier
 for the connection. This identifier is used when referring to a connection from
 the EPICS 
+
+### Configuring records
 
 The device support works with the aai, aao, ai, ao, bi, bo, longin, longout,
 mbbi, mbbo, mbbiDirect, and mbboDirect records. It is used by setting `DTYP` to
@@ -91,6 +99,21 @@ commas. At the moment, the following options are supported:
 * `no_read_on_init`: Only supported for output records. If specified, the
   record's value is *not* initialized by reading the current value from the
   server.
+* `sampling_interval`: Only supported for input records that are operated in
+  `I/O Intr´ mode. In this case, this option specifies the sampling interval
+  for the respective OPC UA node in milliseconds (how often the OPC UA server
+  will check the node's value for changes). Updates are still only received
+  according to the publishing interval of the associated subscription and the
+  server is free to choose a different sampling interval if it does not support
+  the requested one. If not specified (or if `NaN` is specified), the sampling
+  interval is set to be the same as the publishing interval of the associated
+  subscription, which ususally makes sense.
+* `subscription`: Only supported for input records that are operated in
+  `I/O Intr` mode. In this case, this option specifies the name of the
+  subscription that is used when registering the monitored item with the OPC UA
+  server. The configuration options for subscriptions can be set through IOC
+  shell commands. If the name of the subscription is not specified explicitly,
+  the subscription with the name `default` is used.
 
 The node ID identifies the process variable on the server. There are two ways,
 how a node ID can be specified: string and numeric. A string identifier has the
@@ -144,6 +167,7 @@ be chosen for each record:
 * `@C0 str:2,process.variable`
 * `@C0 (no_read_on_init,convert=direct) str:2,other.process.variable Float`
 * `@C0 num:2,353 Int16`
+* `@C0 (sampling_interval=500.0,subscription=mysub) str:4,some.process.variable`
 
 **Examples for records:**
 
@@ -161,6 +185,55 @@ record(ao, "$(P)$(R)ao") {
   field(OUT,  "@$(CONN) (conversion_mode=direct) str:2,other.process.variable uint32")
 }
 ```
+
+record(ai, "$(P)$(R)aiMonitoring") {
+  field(DTYP, "open62541")
+  field(INP,  "@$(CONN) str:2,process.variable")
+  field(SCAN, "I/O Intr")
+}
+
+### Configuring subscriptions
+
+The options for a specific subscription can be set through three IOC shell commands:
+
+```
+open62541SetSubscriptionLifetimeCount("C0", "mysub", 10000);
+open62541SetSubscriptionMaxKeepAliveCount("C0", "mysub", 10);
+open62541SetSubscriptionPublishingInterval("C0", "mysub", 500.0);
+```
+
+The first two arguments to each of these commands are the identifier of the
+connection and the identifier of the subscription that shall be configured.
+Unlike connections, subscriptions do not have to be created explicitly. They are
+created automatically when a record refers to them. A record that does not
+explicitly specify a certain subscription automatically uses the subscription
+with the name `default`.
+
+The lifetime count is a non-negative integer number that specifies after how
+many publishing intervals without client activity, the server may consider the
+client inactive and cancel the subscription. The default value is 10000 and
+there usually is no need to change this setting.
+
+The max. keep alive count is a non-negative integer number that specifies how
+often (in publishing intervals) the server sends an empty notification to the
+client, even if there are no value changes to be published. This allows for the
+client to detect that the connection to the server is still active. The default
+value is 10. When specifying short publishing intervals, one might want to
+increase this number so that the server does not have to send empty
+notifications too often. When specifying a long publishing interval (e.g.
+several seconds), one might want to reduce this number, so that there is some
+server activity within a reasonable amount of time.
+
+The publishing interval is a floating point number that specifies (in
+millseconds) how often the server sends outstanding notifications. Notifications
+are collected at the sampling interval specified for each monitored item, but
+they are queued and only sent out together at each publishing interval. Please
+note that the open62541 EPICS device support currently uses a queue size of one
+for each monitored item. This means no “bursts” of updates are going to be
+received, even if the sampling interval is less than the publishing interval.
+For this reason, it typically does not make sense to specify a shorter sampling
+interval than the publishing interval.
+
 
 Copyright / License
 -------------------
