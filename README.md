@@ -70,8 +70,15 @@ The device support works with the aai, aao, ai, ao, bi, bo, longin, longout,
 mbbi, mbbo, mbbiDirect, and mbboDirect records. It is used by setting `DTYP` to
 `open62541`.
 
-At the moment, the device support only supports polling, so input records have
-to be scanned in order to be updated.
+Input records can be polled or they can be monitored through a subscription.
+When `SCAN` is set to `I/O Intr`, a monitored item for the specified node is
+registered with a subscription, so that the server periodically send updates
+(according to the configured sampling and publishing interval). Otherwise, the
+server is polled for a new value each time the record is processed.
+
+In general, using monitored items and subscriptions is more efficient than
+polling (at least if many records share the same subscription), so it should be
+the preferred way of monitoring nodes for changes.
 
 The address in the `INP` or `OUT` field has the form
 
