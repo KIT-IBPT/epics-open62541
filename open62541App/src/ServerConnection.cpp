@@ -210,11 +210,16 @@ ServerConnection::ServerConnection(const std::string &endpointUrl,
   // key from their respective files. If a server certificate has been
   // specified, we load it as well.
   if (useEncryption) {
+#ifdef UA_ENABLE_ENCRYPTION
     this->clientCert = loadBinaryFile(clientCertPath);
     this->clientKey = loadBinaryFile(clientKeyPath);
     if (serverCertPath.length()) {
       this->serverCert = loadBinaryFile(serverCertPath);
     }
+#else
+    throw std::logic_error(
+      "The encryption features are not available because the EPICS device support has been compiled without them. Please set USE_MBEDTLS to YES in configure/CONFIG_SITE.local and recompile the device support to enable them.");
+#endif
   }
   // Now we can construct the client.
   this->client = UA_Client_new();
