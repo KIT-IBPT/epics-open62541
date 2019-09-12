@@ -247,9 +247,7 @@ public:
   /**
    * Tells whether the record should be initialized with the value read from the
    * device. If <code>true</code>, the current value is read once during record
-   * initialization. If <code>false</code>, the value is never read. This flag
-   * is always <code>false</code> if the verify flag is <code>false</code>. For
-   * input records, this flag does not have any effects.
+   * initialization. If <code>false</code>, the value is never read.
    */
   inline bool isReadOnInit() const {
     return readOnInit;
