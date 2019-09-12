@@ -135,7 +135,17 @@ public:
     /**
      * OPC UA Double type.
      */
-    doubleType
+    doubleType,
+
+    /**
+     * OPC UA String type.
+     */
+    string,
+
+    /**
+     * OPC UA byte-string type.
+     */
+    byteString
 
   };
 
@@ -166,6 +176,10 @@ public:
       return "Float";
     case DataType::doubleType:
       return "Double";
+    case DataType::string:
+      return "String";
+    case DataType::byteString:
+      return "ByteString";
     default:
       return "<unknown>";
     }

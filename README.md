@@ -24,7 +24,7 @@ Features
 
 **Missing features:**
 
-* Support for string type (only numeric data-types are supported).
+* Support for arrays of strings (only scalar strings are supported).
 * Bi-directional process variables (output records are initialized once on
   startup, but do not receive updates when the variable changes on the server).
 * Support for GUID-based node IDs.
@@ -79,8 +79,8 @@ the section called “Using encryption” later in this document.
 ### Configuring records
 
 The device support works with the aai, aao, ai, ao, bi, bo, longin, longout,
-mbbi, mbbo, mbbiDirect, and mbboDirect records. It is used by setting `DTYP` to
-`open62541`.
+lsi, lso, mbbi, mbbo, mbbiDirect, mbboDirect, stringin, and stringout records.
+It is used by setting `DTYP` to `open62541`.
 
 Input records can be polled or they can be monitored through a subscription.
 When `SCAN` is set to `I/O Intr`, a monitored item for the specified node is
@@ -154,6 +154,7 @@ to default data type is as follows:
 * bo: Boolean
 * longout: Int32
 * mbbo and mbboDirect: UInt32
+* lsi, lso, stringin, stringout: String
 
 For the aao record, it depends on the type specified in the `FTVL` field:
 
@@ -180,6 +181,8 @@ be chosen for each record:
 * Int64
 * Float
 * Double
+* String
+* ByteString
 
 **Examples for valid addresses:**
 

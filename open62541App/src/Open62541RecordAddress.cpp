@@ -348,6 +348,10 @@ Open62541RecordAddress::Open62541RecordAddress(
       dataType = DataType::floatType;
     } else if (compareStringsIgnoreCase(dataTypeString, "double")) {
       dataType = DataType::doubleType;
+    } else if (compareStringsIgnoreCase(dataTypeString, "string")) {
+      dataType = DataType::string;
+    } else if (compareStringsIgnoreCase(dataTypeString, "byteString")) {
+      dataType = DataType::byteString;
     } else {
       throw std::invalid_argument(
           "Invalid data type in record address: " + dataTypeString);

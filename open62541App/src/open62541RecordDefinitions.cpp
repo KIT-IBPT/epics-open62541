@@ -42,10 +42,14 @@
 #include "Open62541BoRecord.h"
 #include "Open62541LonginRecord.h"
 #include "Open62541LongoutRecord.h"
+#include "Open62541LsiRecord.h"
+#include "Open62541LsoRecord.h"
 #include "Open62541MbbiDirectRecord.h"
 #include "Open62541MbbiRecord.h"
 #include "Open62541MbboDirectRecord.h"
 #include "Open62541MbboRecord.h"
+#include "Open62541StringinRecord.h"
+#include "Open62541StringoutRecord.h"
 
 using namespace open62541::epics;
 
@@ -389,6 +393,46 @@ struct {
 epicsExportAddress(dset, devLongoutOpen62541);
 
 /**
+ * lsi record type.
+ */
+struct {
+  long numberOfFunctionPointers;
+  DEVSUPFUN report;
+  DEVSUPFUN init;
+  DEVSUPFUN init_record;
+  DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
+  DEVSUPFUN read;
+} devLsiOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541LsiRecord, ::lsiRecord>,
+  getInterruptInfo<Open62541LsiRecord>,
+  processRecord<Open62541LsiRecord>
+};
+epicsExportAddress(dset, devLsiOpen62541);
+
+/**
+ * lso record type.
+ */
+struct {
+  long numberOfFunctionPointers;
+  DEVSUPFUN report;
+  DEVSUPFUN init;
+  DEVSUPFUN init_record;
+  DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
+  DEVSUPFUN write;
+} devLsoOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541LsoRecord, ::lsoRecord>,
+  nullptr,
+  processRecord<Open62541LsoRecord>
+};
+epicsExportAddress(dset, devLsoOpen62541);
+
+/**
  * mbbi record type.
  */
 struct {
@@ -467,5 +511,45 @@ struct {
   processRecord<Open62541MbboDirectRecord>
 };
 epicsExportAddress(dset, devMbboDirectOpen62541);
+
+/**
+ * stringin record type.
+ */
+struct {
+  long numberOfFunctionPointers;
+  DEVSUPFUN report;
+  DEVSUPFUN init;
+  DEVSUPFUN init_record;
+  DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
+  DEVSUPFUN read;
+} devStringinOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541StringinRecord, ::stringinRecord>,
+  getInterruptInfo<Open62541StringinRecord>,
+  processRecord<Open62541StringinRecord>
+};
+epicsExportAddress(dset, devStringinOpen62541);
+
+/**
+ * stringout record type.
+ */
+struct {
+  long numberOfFunctionPointers;
+  DEVSUPFUN report;
+  DEVSUPFUN init;
+  DEVSUPFUN init_record;
+  DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
+  DEVSUPFUN write;
+} devStringoutOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541StringoutRecord, ::stringoutRecord>,
+  nullptr,
+  processRecord<Open62541StringoutRecord>
+};
+epicsExportAddress(dset, devStringoutOpen62541);
 
 } // extern "C"
