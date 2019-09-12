@@ -521,13 +521,14 @@ private:
 
   struct WriteRequest : Request {
 
-
     std::shared_ptr<WriteCallback> callback;
     UaNodeId nodeId;
     UaVariant value;
+
     inline WriteRequest(std::shared_ptr<WriteCallback> const &callback,
         UaNodeId const &nodeId, UaVariant const &value)
-        : Request(RequestType::write), callback(callback), nodeId(nodeId) {
+        : Request(RequestType::write), callback(callback), nodeId(nodeId),
+        value(value) {
       if (!callback) {
         throw std::invalid_argument("The callback must not be null.");
       }
