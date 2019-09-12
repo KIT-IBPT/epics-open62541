@@ -150,6 +150,34 @@ public:
   };
 
   /**
+   * Security mode used when connecting to a server.
+   */
+  enum class SecurityMode {
+
+    /**
+     * No security mode is specified. This means that the client can arbitrarily
+     * choose the security mode (including mode none).
+     */
+    invalid,
+
+    /**
+     * Neither sign nor encrypt the communication.
+     */
+    none,
+
+    /**
+     * Sign the communication.
+     */
+    sign,
+
+    /**
+     * Sign and encrypt the communication.
+     */
+    signAndEncrypt
+
+  };
+
+  /**
    * Interface for a write callback. Write callbacks allow writing to a node
    * in an asynchronous way, so that the calling code does not have to wait
    * until the operation finishes.
@@ -192,16 +220,55 @@ public:
   };
 
   /**
-   * Create a server connection for the specified endpoint.
+   * Creates a server connection for the specified endpoint. This server
+   * connection is not configured with any encryption features.
    */
   ServerConnection(const std::string &endpointUrl);
 
   /**
-   * Create a server connection for the specified endpoint, using the
-   * specified credentials for authentication.
+   * Creates a server connection for the specified endpoint. This server
+   * connection is configured to use encryption according to the specified
+   * parameters.
+   *
+   * The path to the server certificate is optional. If empty, the any
+   * certificate presented by the server is going to be trusted.
+   *
+   * The application URI is optional as well. If empty, a default value
+   * ("urn:unconfigured:application") is used. In general, specifying the
+   * application URI is only necessary if a server verifies the client
+   * certificate and the URI specified in the client certificate does not match
+   * the default one.
+   */
+  ServerConnection(const std::string &endpointUrl, SecurityMode securityMode,
+      const std::string &clientCertPath, const std::string &clientKeyPath,
+      const std::string &serverCertPath, const std::string &applicationUri);
+
+  /**
+   * Creates a server connection for the specified endpoint, using the specified
+   * credentials for authentication. This connection is not configured with any
+   * encryption features.
    */
   ServerConnection(const std::string &endpointUrl, const std::string &username,
       const std::string &password);
+
+  /**
+   * Creates a server connection for the specified endpoint, using the specified
+   * credentials for authentication. This server connection is configured to use
+   * encryption according to the specified parameters.
+   *
+   * The path to the server certificate is optional. If empty, the any
+   * certificate presented by the server is going to be trusted.
+   *
+   * The application URI is optional as well. If empty, a default value
+   * ("urn:unconfigured:application") is used. In general, specifying the
+   * application URI is only necessary if a server verifies the client
+   * certificate and the URI specified in the client certificate does not match
+   * the default one.
+   */
+  ServerConnection(const std::string &endpointUrl, const std::string &username,
+      const std::string &password, SecurityMode securityMode,
+      const std::string &clientCertPath, const std::string &clientKeyPath,
+      const std::string &serverCertPath, const std::string &applicationUri);
 
   /**
    * Destructor.
@@ -479,19 +546,25 @@ private:
 
   };
 
-  std::string endpointUrl;
-  std::string username;
-  std::string password;
-  bool useAuthentication;
-
-  std::mutex mutex;
+  std::string applicationUri;
+  UA_Client *client;
+  std::vector<char> clientCert;
+  std::vector<char> clientKey;
   std::thread connectionThread;
-  std::atomic<bool> shutdownRequested;
-  std::unordered_map<std::string, Subscription> subscriptions;
+  std::string endpointUrl;
+  std::string issuerListDirPath;
+  std::mutex mutex;
+  std::string password;
   std::list<std::unique_ptr<Request>> requestQueue;
   std::condition_variable requestQueueCv;
   std::mutex requestQueueMutex;
-  UA_Client *client;
+  SecurityMode securityMode;
+  std::vector<char> serverCert;
+  std::atomic<bool> shutdownRequested;
+  std::unordered_map<std::string, Subscription> subscriptions;
+  bool useAuthentication;
+  bool useEncryption;
+  std::string username;
 
   // We do not want to allow copy or move construction or assignment.
   ServerConnection(const ServerConnection &) = delete;
@@ -501,7 +574,10 @@ private:
 
   ServerConnection(const std::string &endpointUrl,
       const std::string &username, const std::string &password,
-      bool useAuthentication);
+      bool useAuthentication, SecurityMode securityMode,
+      const std::string &clientCertPath, const std::string &clientKeyPath,
+      const std::string &serverCertPath, const std::string &applicationUri,
+      bool useEncryption);
 
   void activateMonitoredItem(Subscription &subscription,
       MonitoredItem &monitoredItem);
@@ -510,6 +586,7 @@ private:
       const UaNodeId &nodeId,
       std::shared_ptr<MonitoredItemCallback> const &callback,
       double samplingInterval, std::uint32_t queueSize, bool discardOldest);
+  void configureClient();
   bool connect();
   void deactivateMonitoredItem(Subscription &subscription,
       MonitoredItem &monitoredItem);

@@ -41,3 +41,20 @@ CHECK_RELEASE = YES
 -include $(TOP)/../CONFIG_SITE.local
 -include $(TOP)/configure/CONFIG_SITE.local
 
+# If we want to enable the encryption features, we need libmbedtls and have to
+# define the UA_ENABLE_ENCRYPTION macro. We do this AFTER including
+# CONFIG_SITE.local so that this file can be used to define USE_MBEDTLS,
+# MBEDTLS_INCLUDE, and MBEDTLS_LIB.
+ifeq ($(USE_MBEDTLS),YES)
+  USR_CFLAGS += -DUA_ENABLE_ENCRYPTION
+  USR_CXXFLAGS += -DUA_ENABLE_ENCRYPTION
+  USR_SYS_LIBS += mbedcrypto mbedtls mbedx509
+endif
+ifdef MBEDTLS_LIB
+  USR_LDFLAGS += -L$(MBEDTLS_LIB)
+endif
+ifdef MBEDTLS_INCLUDE
+  USR_CFLAGS += -I$(MBEDTLS_INCLUDE)
+  USR_CXXFLAGS += -I$(MBEDTLS_INCLUDE)
+endif
+

@@ -28,6 +28,8 @@
  */
 
 #include <chrono>
+#include <fstream>
+#include <iterator>
 
 #include "open62541Error.h"
 #include "UaException.h"
@@ -38,12 +40,34 @@ namespace open62541 {
 namespace epics {
 
 ServerConnection::ServerConnection(const std::string &endpointUrl) :
-    ServerConnection(endpointUrl, std::string(), std::string(), false) {
+    ServerConnection(endpointUrl, std::string(), std::string(), false,
+      SecurityMode::invalid, std::string(), std::string(), std::string(),
+      std::string(), false) {
+}
+
+ServerConnection::ServerConnection(const std::string &endpointUrl,
+    SecurityMode securityMode, const std::string &clientCertPath,
+    const std::string &clientKeyPath, const std::string &serverCertPath,
+    const std::string &applicationUri) :
+    ServerConnection(endpointUrl, std::string(), std::string(), false,
+      securityMode, clientCertPath, clientKeyPath, serverCertPath,
+      applicationUri, true) {
 }
 
 ServerConnection::ServerConnection(const std::string &endpointUrl,
     const std::string &username, const std::string &password) :
-    ServerConnection(endpointUrl, username, password, true) {
+    ServerConnection(endpointUrl, username, password, true,
+      SecurityMode::invalid, std::string(), std::string(), std::string(),
+      std::string(), false) {
+}
+
+ServerConnection::ServerConnection(const std::string &endpointUrl,
+    const std::string &username, const std::string &password,
+    SecurityMode securityMode, const std::string &clientCertPath,
+    const std::string &clientKeyPath, const std::string &serverCertPath,
+    const std::string &applicationUri) :
+    ServerConnection(endpointUrl, username, password, true, securityMode,
+    clientCertPath, clientKeyPath, serverCertPath, applicationUri, true) {
 }
 
 ServerConnection::~ServerConnection() {
@@ -155,21 +179,50 @@ void ServerConnection::writeAsync(const UaNodeId &nodeId,
   requestQueueCv.notify_all();
 }
 
+namespace {
+
+std::vector<char> loadBinaryFile(std::string const &path) {
+  std::ifstream stream(path, std::ios::binary);
+  auto data = std::vector<char>(
+    std::istreambuf_iterator<char>(stream),
+    std::istreambuf_iterator<char>());
+  if (!data.size()) {
+    throw std::invalid_argument(
+      std::string("Error while reading \"")
+      + path + "\": File cannot be read or is empty.");
+  }
+  return data;
+}
+
+} // anonymous namespace
+
 ServerConnection::ServerConnection(const std::string &endpointUrl,
     const std::string &username, const std::string &password,
-    bool useAuthentication) :
-    endpointUrl(endpointUrl), username(username), password(password),
-        useAuthentication(useAuthentication), shutdownRequested(false) {
+    bool useAuthentication, SecurityMode securityMode,
+    const std::string &clientCertPath, const std::string &clientKeyPath,
+    const std::string &serverCertPath, const std::string &applicationUri,
+    bool useEncryption) :
+    applicationUri(applicationUri), endpointUrl(endpointUrl),
+    password(password), securityMode(securityMode), shutdownRequested(false),
+    useAuthentication(useAuthentication), useEncryption(useEncryption),
+    username(username) {
+  // If encryption is enabled, we first have to read the client certificate and
+  // key from their respective files. If a server certificate has been
+  // specified, we load it as well.
+  if (useEncryption) {
+    this->clientCert = loadBinaryFile(clientCertPath);
+    this->clientKey = loadBinaryFile(clientKeyPath);
+    if (serverCertPath.length()) {
+      this->serverCert = loadBinaryFile(serverCertPath);
+    }
+  }
+  // Now we can construct the client.
   this->client = UA_Client_new();
   if (!this->client) {
     throw UaException(UA_STATUSCODE_BADOUTOFMEMORY);
   }
-  auto config = UA_Client_getConfig(this->client);
-  auto statusCode = UA_ClientConfig_setDefault(config);
-  if (statusCode) {
-    throw UaException(statusCode);
-  }
   try {
+    configureClient();
     this->connectionThread = std::thread([this]() {runConnectionThread();});
   } catch (...) {
     // When creating the thread fails, we have to delete the client because the
@@ -304,6 +357,77 @@ void ServerConnection::addMonitoredItemInternal(
   }
 }
 
+void ServerConnection::configureClient() {
+  auto config = UA_Client_getConfig(this->client);
+  // The useEncryption flag can only be set to true if encryption is enabled at
+  // compile time.
+  if (useEncryption) {
+#ifdef UA_ENABLE_ENCRYPTION
+    // When using encryption, we specify a client certificate and (optionally)
+    // a server certificate. The byte strings that we create here are only used
+    // during the call to the functions and will not be cleared, so it is okay
+    // to simply make them reference the data that we store inside this class.
+    UA_ByteString clientCertString;
+    clientCertString.data = reinterpret_cast<std::uint8_t *>(clientCert.data());
+    clientCertString.length = clientCert.size();
+    UA_ByteString clientKeyString;
+    clientKeyString.data = reinterpret_cast<std::uint8_t *>(clientKey.data());
+    clientKeyString.length = clientKey.size();
+    // If no server certificate has been specified, we use an empty trust list.
+    // This will effectively cause the client to accept any server certificate.
+    UA_ByteString serverCertString;
+    UA_ByteString const *trustList;
+    std::size_t trustListSize;
+    if (serverCert.size()) {
+      serverCertString.data =
+        reinterpret_cast<std::uint8_t *>(serverCert.data());
+      serverCertString.length = serverCert.size();
+      trustList = &serverCertString;
+      trustListSize = 1;
+    } else {
+      trustList = nullptr;
+      trustListSize = 0;
+    }
+    auto statusCode = UA_ClientConfig_setDefaultEncryption(
+      config, clientCertString, clientKeyString, trustList, trustListSize,
+      nullptr, 0);
+    if (statusCode) {
+      throw UaException(statusCode);
+    }
+    // If a non-empty application URI has been specified. we set it in the
+    // client description. This is necessary because servers will typically
+    // verify that the application URI specified in the client description
+    // matches the application URI specified in the client certificate.
+    if (applicationUri.length()) {
+      UA_String_clear(&config->clientDescription.applicationUri);
+      config->clientDescription.applicationUri =
+        UA_STRING_ALLOC(applicationUri.c_str());
+    }
+    // We also have to set the message security mode so that the client actually
+    // uses encryption if desired.
+    switch (securityMode) {
+    case SecurityMode::invalid:
+      config->securityMode = UA_MESSAGESECURITYMODE_INVALID;
+      break;
+    case SecurityMode::none:
+      config->securityMode = UA_MESSAGESECURITYMODE_NONE;
+      break;
+    case SecurityMode::sign:
+      config->securityMode = UA_MESSAGESECURITYMODE_SIGN;
+      break;
+    case SecurityMode::signAndEncrypt:
+      config->securityMode = UA_MESSAGESECURITYMODE_SIGNANDENCRYPT;
+      break;
+    }
+#endif // UA_ENABLE_ENCRYPTION
+  } else {
+    auto statusCode = UA_ClientConfig_setDefault(config);
+    if (statusCode) {
+      throw UaException(statusCode);
+    }
+  }
+}
+
 bool ServerConnection::connect() {
   UA_StatusCode status;
   if (useAuthentication) {
@@ -411,11 +535,7 @@ bool ServerConnection::maybeResetConnection(UA_StatusCode statusCode) {
   UA_Client_disconnect(client);
   UA_Client_reset(client);
   // After resetting the client, we have to apply the configuration again.
-  auto config = UA_Client_getConfig(this->client);
-  auto  statusCodeClientConfig = UA_ClientConfig_setDefault(config);
-  if (statusCodeClientConfig) {
-    throw UaException(statusCode);
-  }
+  configureClient();
   // We also have to reset the status of all subscriptions and monitored items.
   for (auto &subscriptionEntry : subscriptions) {
     auto &subscription = subscriptionEntry.second;
@@ -518,7 +638,17 @@ void ServerConnection::runConnectionThread() {
       auto status = UA_Client_run_iterate(client, 0);
       // If there is an error, we reset the connection for certain status codes.
       if (status != UA_STATUSCODE_GOOD) {
-        maybeResetConnection(status);
+        try {
+          maybeResetConnection(status);
+        } catch (UaException const &e) {
+          // There are rare cases in which the maybeResetConnection method might
+          // throw an exception. In these cases, we log the exception and
+          // continue. We log the exception because otherwise there might be no
+          // way for the user to detect the underlying problem (the user would
+          // only see errors because the client is disconnected).
+          errorExtendedPrintf("Could not configure the OPC UA client: %s",
+            UA_StatusCode_name(e.getStatusCode()));
+        }
       }
     }
     // We need to hold a lock on the mutex protecting access to the request

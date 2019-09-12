@@ -28,6 +28,7 @@
  */
 
 #include <cstring>
+#include <exception>
 
 #include <epicsExport.h>
 #include <iocsh.h>
@@ -68,12 +69,22 @@ static void iocshOpen62541ConnectionSetupFunc(const iocshArgBuf *args)
   // Verify and convert the parameters.
   if (!connectionId) {
     errorPrintf(
-        "Could not setup the connection: Connection ID must be specified.");
+      "Could not setup the connection: Connection ID must be specified.");
     return;
   }
   if (!std::strlen(connectionId)) {
     errorPrintf(
-        "Could not setup the connection: Connection ID must not be empty.");
+      "Could not setup the connection: Connection ID must not be empty.");
+    return;
+  }
+  if (!endpointUrl) {
+    errorPrintf(
+      "Could not setup the connection: Endpoint URL must be specified.");
+    return;
+  }
+  if (!std::strlen(endpointUrl)) {
+    errorPrintf(
+      "Could not setup the connection: Endpoint URL must not be empty.");
     return;
   }
   std::shared_ptr<ServerConnection> connection;
@@ -87,6 +98,159 @@ static void iocshOpen62541ConnectionSetupFunc(const iocshArgBuf *args)
   } catch (const UaException &e) {
     errorPrintf("Could not setup the connection: %s", e.what());
     return;
+  } catch (const std::exception &e) {
+    errorPrintf("Could not setup the connection: %s", e.what());
+  }
+  ServerConnectionRegistry::getInstance().registerServerConnection(connectionId,
+      connection);
+}
+
+// Data structures needed for the iocsh open62541ConnectionSetupEncrypted function.
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg0 = {
+  "connection ID",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg1 = {
+  "endpoint URL",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg2 = {
+  "username",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg3 = {
+  "password",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg4 = {
+  "security mode",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg5 = {
+  "client certificate path",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg6 = {
+  "client key path",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg7 = {
+  "server cert path",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg8 = {
+  "client application URI",
+  iocshArgString
+};
+static const iocshArg * const iocshOpen62541ConnectionSetupEncryptedArgs[] = {
+  &iocshOpen62541ConnectionSetupEncryptedArg0,
+  &iocshOpen62541ConnectionSetupEncryptedArg1,
+  &iocshOpen62541ConnectionSetupEncryptedArg2,
+  &iocshOpen62541ConnectionSetupEncryptedArg3,
+  &iocshOpen62541ConnectionSetupEncryptedArg4,
+  &iocshOpen62541ConnectionSetupEncryptedArg5,
+  &iocshOpen62541ConnectionSetupEncryptedArg6,
+  &iocshOpen62541ConnectionSetupEncryptedArg7,
+  &iocshOpen62541ConnectionSetupEncryptedArg8
+};
+static const iocshFuncDef iocshOpen62541ConnectionSetupEncryptedFuncDef = {
+    "open62541ConnectionSetupEncrypted", 9, iocshOpen62541ConnectionSetupEncryptedArgs };
+
+/**
+ * Implementation of the iocsh open62541ConnectionSetupEncrypted function. This
+ * function creates a connection to an OPC UA server.
+ */
+static void iocshOpen62541ConnectionSetupEncryptedFunc(const iocshArgBuf *args)
+    noexcept {
+  char const *connectionId = args[0].sval;
+  char const *endpointUrl = args[1].sval;
+  char const *username = args[2].sval;
+  char const *password = args[3].sval;
+  char const *securityModeString = args[4].sval;
+  char const *clientCertPath = args[5].sval;
+  char const *clientKeyPath = args[6].sval;
+  char const *serverCertPath = args[7].sval;
+  char const *applicationUri = args[8].sval;
+  // Verify and convert the parameters.
+  if (!connectionId) {
+    errorPrintf(
+        "Could not setup the connection: Connection ID must be specified.");
+    return;
+  }
+  if (!std::strlen(connectionId)) {
+    errorPrintf(
+      "Could not setup the connection: Connection ID must not be empty.");
+    return;
+  }
+  if (!endpointUrl) {
+    errorPrintf(
+      "Could not setup the connection: Endpoint URL must be specified.");
+    return;
+  }
+  if (!std::strlen(endpointUrl)) {
+    errorPrintf(
+      "Could not setup the connection: Endpoint URL must not be empty.");
+    return;
+  }
+  if (!securityModeString || !strlen(securityModeString)) {
+    securityModeString = "invalid";
+  }
+  ServerConnection::SecurityMode securityMode;
+  if (!strcasecmp(securityModeString, "invalid")) {
+    securityMode = ServerConnection::SecurityMode::invalid;
+  } else if (!strcasecmp(securityModeString, "none")) {
+    securityMode = ServerConnection::SecurityMode::none;
+  } else if (!strcasecmp(securityModeString, "sign")) {
+    securityMode = ServerConnection::SecurityMode::sign;
+  } else if (!strcasecmp(securityModeString, "sign & encrypt")) {
+    securityMode = ServerConnection::SecurityMode::signAndEncrypt;
+  } else {
+    errorPrintf(
+      "Could not setup the connection: The security mode must be one of \"invalid\", \"none\", \"sign\", or \"sign & encrypt\".");
+    return;
+  }
+  if (!clientCertPath) {
+    errorPrintf(
+      "Could not setup the connection: Client certificate path must be specified.");
+    return;
+  }
+  if (!std::strlen(clientCertPath)) {
+    errorPrintf(
+      "Could not setup the connection: Client certificate path must not be empty.");
+    return;
+  }
+  if (!clientKeyPath) {
+    errorPrintf(
+      "Could not setup the connection: Client key path must be specified.");
+    return;
+  }
+  if (!std::strlen(clientKeyPath)) {
+    errorPrintf(
+      "Could not setup the connection: Client key path must not be empty.");
+    return;
+  }
+  if (!serverCertPath) {
+    serverCertPath = "";
+  }
+  if (!applicationUri) {
+    applicationUri = "";
+  }
+  std::shared_ptr<ServerConnection> connection;
+  try {
+    if (username && std::strlen(username)) {
+      connection = std::make_shared<ServerConnection>(
+        endpointUrl, username, password ? password : "", securityMode,
+        clientCertPath, clientKeyPath, serverCertPath, applicationUri);
+    } else {
+      connection = std::make_shared<ServerConnection>(
+        endpointUrl, securityMode, clientCertPath, clientKeyPath,
+        serverCertPath, applicationUri);
+    }
+  } catch (const UaException &e) {
+    errorPrintf("Could not setup the connection: %s", e.what());
+    return;
+  } catch (const std::exception &e) {
+    errorPrintf("Could not setup the connection: %s", e.what());
   }
   ServerConnectionRegistry::getInstance().registerServerConnection(connectionId,
       connection);
@@ -301,6 +465,9 @@ static void open62541Registrar() {
   ::iocshRegister(
     &iocshOpen62541ConnectionSetupFuncDef,
     iocshOpen62541ConnectionSetupFunc);
+  ::iocshRegister(
+    &iocshOpen62541ConnectionSetupEncryptedFuncDef,
+    iocshOpen62541ConnectionSetupEncryptedFunc);
   ::iocshRegister(
     &iocshOpen62541SetSubscriptionLifetimeCountFuncDef,
     iocshOpen62541SetSubscriptionLifetimeCountFunc);
