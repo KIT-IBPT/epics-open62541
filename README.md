@@ -19,6 +19,8 @@ Features
 * Read and write OPC UA process variables.
 * Monitor OPC UA process variables for changes (subscriptions / monitored
   items).
+* Support for signed and encrypted connections (when compiled with encryption
+  support).
 
 **Missing features:**
 
@@ -40,6 +42,12 @@ the compiler expects C 11 and C++ 11 source code. This can be done by creating
 a file called `configure/CONFIG_SITE.local` and setting `USR_CFLAGS` and
 `USR_CXXFLAGS` in this file. An example can be found in
 `configure/EXAMPLE_CONFIG_SITE.local`.
+
+If you want to enable encryption support, you need to installe
+[Embed TLS](https://tls.mbed.org/) and set `USE_EMBEDTLS` to `YES` in
+`configure/CONFIG_SITE.local`. If Embed TLS is not installed in one of the
+standard locations where the compiler and linker will find it, you might also
+have to specify `EMBEDTLS_LIB` and `EMBEDTLS_INCLUDE`.
 
 Usage
 -----
@@ -63,6 +71,10 @@ If the OPC UA server does not require authentication, an empty string should be
 passed for the username and password. In this example, `C0` is the identifier
 for the connection. This identifier is used when referring to a connection from
 the EPICS 
+
+The `open62541ConnectionSetup` command will establish a connection that is
+neither signed nor encrypted. If you need such a connection, please refer to
+the section called “Using encryption” later in this document.
 
 ### Configuring records
 
@@ -241,6 +253,132 @@ received, even if the sampling interval is less than the publishing interval.
 For this reason, it typically does not make sense to specify a shorter sampling
 interval than the publishing interval.
 
+### Using encryption
+
+If the open62541 device support has been compiled with encryption support
+enabled (by adding `USE_MBEDTLS = YES` to `configure/CONFIG_SITE.local`), there
+are two additional IOC shell commands.
+
+The `open62541ConnectionSetupEncrypted` is used instead of the
+`open62541ConnectionSetup` command and can be used to establish a signed or
+encrypted connection to a server. It can be used like in the following example:
+
+```
+open62541ConnectionSetupEncrypted("C0", "opc.tcp://opc-ua.example.com:4840", "username", "password", "sign & encrypt", "$(TOP)/pki/client_cert.der", "$(TOP)/pki/client_key.der", "$(TOP)/pki/server_cert.der", "urn:unconfigured:application");
+```
+
+The meaning of the first four arguments is exactly the same as for the
+`open62541ConnectionSetup` command. The following arguments are in order:
+
+* The message security mode used for the connection. The default value (used if
+  the string is empty) is `none`. This means that communication with the server
+  will neither be signed nor encrypted. Typically, the only reason to use this
+  mode (instead of simply using `open62541ConnectionSetup`) is a server
+  requiring some cryptography for authentication, but still allowing unsigned
+  and unencrypted communication. The other modes are `sign` (communication is
+  signed so that it cannot be manipulated on the wire) and `sign & encrypt`
+  (communication is also encrypted so that eavesdropping is not possible).
+* The path to the file storing the client certificate. Specifying a client
+  certificate is mandatory. The file must be in the DER format. An example of
+  how to generate a client certificate is given later in this section.
+* The path to the file storing the private key associated with the client
+  certificate. The file must be in the DER format and the key must be available
+  unencrypted (without requiring a passphrase). The private key is mandatory as
+  well.
+* The path to the file storing the server certificate. This is optional. If an
+  empty string is specified, validation of the server certificate is disabled,
+  so the client simply trusts any certificate presented by the server. If
+  specified, the certificate file must be in the DER format as well. The server
+  certificate can be retrieved using the `open62541DumpServerCertificates`
+  command (described later in this section).
+* The application URI. The default value (if an empty string is specified) is
+  `urn:unconfigured:application`. Typically, servers check that the application
+  URI presented by the client matches the one specified by the client
+  certificate, so it might be necessary to specify this parameter if using a
+  certificate that specifies a different URI than
+  `urn:unconfigured:application`.
+
+**Generating a client certificate:**
+
+A self-signed client certificate can be generated using
+[OpenSSL](https://www.openssl.org/). First, one has to create a certificate
+request:
+
+```
+openssl req \
+  -out client_cert.csr \
+  -keyout client_key.pem \
+  -newkey rsa:2048 \
+  -nodes
+```
+
+Next, the certificate request has to be signed. There are some options that
+cannot be specified on the command line directly, so we first have to create a
+file called `exts.txt` with the following content:
+
+```
+subjectAltName=URI:urn:unconfigured:application
+basicConstraints=critical,CA:FALSE
+subjectKeyIdentifier=hash
+authorityKeyIdentifier=keyid,issuer
+keyUsage=critical,digitalSignature,nonRepudiation,keyEncipherment,dataEncipherment,keyCertSign
+extendedKeyUsage=critical,serverAuth,clientAuth
+```
+
+Now, the certificate can be signed:
+
+```
+openssl x509 \
+  -in client_cert.csr \
+  -out client_cert.der \
+  -outform der \
+  -signkey client_key.pem \
+  -extfile exts.txt \
+  -sha256 \
+  -days 10950 \
+  -req
+```
+
+Finally, the private key has to be converted from the PEM to the DER format:
+
+```
+openssl rsa \
+  -in client_key.pem \
+  -out client_key.der \
+  -outform der
+```
+
+Typically, it is necessary to tell the OPC UA server to trust the certificate
+presented by the client. Please refer to the documentation of the respective OPC
+UA server for more information on how to do this.
+
+If the server certificate is supposed to be validated by the client, it first
+has to be saved to a file (in DER format). If you already have such a file, you
+can simply use it. Otherwise, you can use the `open62541DumpServerCertificates`
+IOC shell command in order to retrieve it.
+
+**Retrieving the server certificate:**
+
+The `open62541DumpServerCertificates` IOC shell command can be used to retrieve
+all certificates presented by a server (typically, there will only be one):
+
+```
+open62541DumpServerCertificates("opc.tcp://opc-ua.example.com:4840", "$(TOP)/pki")
+```
+
+This command will dump the certificates presented by the server available at the
+specified endpoint to the directory `$(TOP)/pki`. The directory needs to already
+exist. Each certificate is dumped to a file with a filename in the form
+`<SHA-256 hash>.der`. You can use OpenSSL to inspect the dumped certificate(s).
+For example:
+
+```
+openssl x509 \
+  -in ead5cd3be2697b77a2378dbc058474a3f0e45ff6f4f6845acdd88f692afad8d4.der \
+  -inform der \
+  -noout \
+  -text
+```
 
 Copyright / License
 -------------------
@@ -250,7 +388,7 @@ This EPICS device support is licensed under the terms of the
 developed by [aquenos GmbH](https://www.aquenos.com/) on behalf of the
 [Karlsruhe Institute of Technology's Institute of Beam Physics and Technology](https://www.ibpt.kit.edu/).
 
-The [Open62541 library](https://open62541.org/), which is shipped with this
+The [open62541 library](https://open62541.org/), which is shipped with this
 device support (files `open62541.c` and `open62541.h`) is licensed under the
 terms of the [Mozilla Public License version 2.0](LICENSE-MPL.txt). The
 copyright for that library is with the original contributors.
