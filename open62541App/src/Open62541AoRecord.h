@@ -240,7 +240,17 @@ protected:
    * selected.
    */
   virtual void validateRecordAddress() {
-    // We actually do not need any checks here.
+    // We need to replicate those checks from the parent class that we actually
+    // want.
+    const Open62541RecordAddress &address { this->getRecordAddress() };
+    if (!std::isnan(address.getSamplingInterval())) {
+      throw std::invalid_argument(
+          "The sampling_interval option is not supported for output records.");
+    }
+    if (address.getSubscription() != "default") {
+      throw std::invalid_argument(
+          "The subscription option is not supported for output records.");
+    }
   }
 
   void writeRecordValue(const UaVariant &value) {
