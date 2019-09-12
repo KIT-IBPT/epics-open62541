@@ -33,6 +33,7 @@
 #include <epicsExport.h>
 #include <iocsh.h>
 
+#include "open62541DumpServerCertificates.h"
 #include "open62541Error.h"
 #include "ServerConnectionRegistry.h"
 #include "UaException.h"
@@ -105,7 +106,8 @@ static void iocshOpen62541ConnectionSetupFunc(const iocshArgBuf *args)
       connection);
 }
 
-// Data structures needed for the iocsh open62541ConnectionSetupEncrypted function.
+// Data structures needed for the iocsh open62541ConnectionSetupEncrypted
+// function.
 static const iocshArg iocshOpen62541ConnectionSetupEncryptedArg0 = {
   "connection ID",
   iocshArgString
@@ -154,7 +156,9 @@ static const iocshArg * const iocshOpen62541ConnectionSetupEncryptedArgs[] = {
   &iocshOpen62541ConnectionSetupEncryptedArg8
 };
 static const iocshFuncDef iocshOpen62541ConnectionSetupEncryptedFuncDef = {
-    "open62541ConnectionSetupEncrypted", 9, iocshOpen62541ConnectionSetupEncryptedArgs };
+  "open62541ConnectionSetupEncrypted", 9,
+  iocshOpen62541ConnectionSetupEncryptedArgs
+};
 
 /**
  * Implementation of the iocsh open62541ConnectionSetupEncrypted function. This
@@ -254,6 +258,57 @@ static void iocshOpen62541ConnectionSetupEncryptedFunc(const iocshArgBuf *args)
   }
   ServerConnectionRegistry::getInstance().registerServerConnection(connectionId,
       connection);
+}
+
+// Data structures needed for the iocsh open62541DumpServerCertificates
+// function.
+static const iocshArg iocshOpen62541DumpServerCertificatesArg0 = {
+  "endpoint URL",
+  iocshArgString
+};
+static const iocshArg iocshOpen62541DumpServerCertificatesArg1 = {
+  "target directory",
+  iocshArgString
+};
+static const iocshArg * const iocshOpen62541DumpServerCertificatesArgs[] = {
+  &iocshOpen62541DumpServerCertificatesArg0,
+  &iocshOpen62541DumpServerCertificatesArg1
+};
+static const iocshFuncDef iocshOpen62541DumpServerCertificatesFuncDef = {
+  "open62541DumpServerCertificates", 2, iocshOpen62541DumpServerCertificatesArgs
+};
+
+/**
+ * Implementation of the iocsh open62541DumpServerCertificates function. This
+ * function dumps all the certificates presented by a sepcific server to files
+ * inside a target directory.
+ */
+static void iocshOpen62541DumpServerCertificatesFunc(const iocshArgBuf *args)
+    noexcept {
+  char const *endpointUrl = args[0].sval;
+  char const *targetDirectory = args[1].sval;
+  // Verify and convert the parameters.
+  if (!endpointUrl) {
+    errorPrintf(
+      "Could not dump server certificates: Endpoint URL must be specified.");
+    return;
+  }
+  if (!std::strlen(endpointUrl)) {
+    errorPrintf(
+      "Could not dump server certificates: Endpoint URL must not be empty.");
+    return;
+  }
+  if (!targetDirectory) {
+    targetDirectory = "";
+  }
+  try {
+    dumpServerCertificates(endpointUrl, targetDirectory);
+  } catch (const UaException &e) {
+    errorPrintf("Could not dump the certificates: %s", e.what());
+    return;
+  } catch (const std::exception &e) {
+    errorPrintf("Could not dump the certificates: %s", e.what());
+  }
 }
 
 // Data structures needed for the iocsh open62541SetSubscriptionLifetimeCount
@@ -468,6 +523,9 @@ static void open62541Registrar() {
   ::iocshRegister(
     &iocshOpen62541ConnectionSetupEncryptedFuncDef,
     iocshOpen62541ConnectionSetupEncryptedFunc);
+  ::iocshRegister(
+    &iocshOpen62541DumpServerCertificatesFuncDef,
+    iocshOpen62541DumpServerCertificatesFunc);
   ::iocshRegister(
     &iocshOpen62541SetSubscriptionLifetimeCountFuncDef,
     iocshOpen62541SetSubscriptionLifetimeCountFunc);

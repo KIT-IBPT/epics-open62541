@@ -18,6 +18,7 @@ DBD += open62541.dbd
 # specify all source files to be compiled and added to the library
 open62541_SRCS += open62541.c
 open62541_SRCS += open62541Error.cpp
+open62541_SRCS += open62541DumpServerCertificates.cpp
 open62541_SRCS += open62541RecordDefinitions.cpp
 open62541_SRCS += open62541Registrar.cpp
 open62541_SRCS += Open62541RecordAddress.cpp
