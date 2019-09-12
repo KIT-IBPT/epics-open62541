@@ -30,6 +30,8 @@
 #ifndef OPEN62541_EPICS_OUTPUT_RECORD_H
 #define OPEN62541_EPICS_OUTPUT_RECORD_H
 
+#include <cmath>
+
 #include <alarm.h>
 #include <recGbl.h>
 
@@ -96,6 +98,24 @@ protected:
   virtual bool processPrepare();
 
   virtual void processComplete();
+
+  /**
+   * Validates the record address. In addition to the checks made by the base
+   * class, this method also checks that neither a subscription nor a sampling
+   * interval are specified. These settings are only allowed for input records.
+   */
+  virtual void validateRecordAddress() {
+    Open62541Record<RecordType>::validateRecordAddress();
+    const Open62541RecordAddress &address { this->getRecordAddress() };
+    if (!std::isnan(address.getSamplingInterval())) {
+      throw std::invalid_argument(
+          "The sampling_interval option is not supported for output records.");
+    }
+    if (address.getSubscription() != "default") {
+      throw std::invalid_argument(
+          "The subscription option is not supported for output records.");
+    }
+  }
 
 private:
 
