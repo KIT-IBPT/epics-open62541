@@ -182,14 +182,21 @@ void ServerConnection::writeAsync(const UaNodeId &nodeId,
 namespace {
 
 std::vector<char> loadBinaryFile(std::string const &path) {
-  std::ifstream stream(path, std::ios::binary);
-  auto data = std::vector<char>(
+  std::vector<char> data;
+  try {
+    std::ifstream stream(path, std::ios::binary);
+    stream.exceptions(std::ios::badbit | std::ios::failbit);
+    data = std::vector<char>(
     std::istreambuf_iterator<char>(stream),
     std::istreambuf_iterator<char>());
+  } catch (...) {
+    throw std::runtime_error(
+      std::string("Error while trying to read \"") + path + "\".");
+  }
   if (!data.size()) {
-    throw std::invalid_argument(
-      std::string("Error while reading \"")
-      + path + "\": File cannot be read or is empty.");
+    throw std::runtime_error(
+      std::string("Error while trying to read \"") + path
+      + "\": File is empty.");
   }
   return data;
 }
