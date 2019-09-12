@@ -197,12 +197,10 @@ static void iocshOpen62541ConnectionSetupEncryptedFunc(const iocshArgBuf *args)
     return;
   }
   if (!securityModeString || !strlen(securityModeString)) {
-    securityModeString = "invalid";
+    securityModeString = "none";
   }
   ServerConnection::SecurityMode securityMode;
-  if (!strcasecmp(securityModeString, "invalid")) {
-    securityMode = ServerConnection::SecurityMode::invalid;
-  } else if (!strcasecmp(securityModeString, "none")) {
+  if (!strcasecmp(securityModeString, "none")) {
     securityMode = ServerConnection::SecurityMode::none;
   } else if (!strcasecmp(securityModeString, "sign")) {
     securityMode = ServerConnection::SecurityMode::sign;
