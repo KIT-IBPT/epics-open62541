@@ -140,7 +140,7 @@ public:
   /**
    * Creates and returns a node ID of type UA_NODEIDTYPE_GUID.
    */
-  inline static UaNodeId createByteString(std::uint16_t nsIndex,
+  inline static UaNodeId createGuid(std::uint16_t nsIndex,
       UA_Guid const &identifier) {
     auto internalId = UA_NODEID_GUID(nsIndex, identifier);
     return UaNodeId(std::move(internalId));
