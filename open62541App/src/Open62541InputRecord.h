@@ -30,6 +30,7 @@
 #ifndef OPEN62541_EPICS_INPUT_RECORD_H
 #define OPEN62541_EPICS_INPUT_RECORD_H
 
+#include <cmath>
 #include <mutex>
 #include <string>
 
