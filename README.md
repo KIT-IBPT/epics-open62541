@@ -27,7 +27,6 @@ Features
 * Support for arrays of strings (only scalar strings are supported).
 * Bi-directional process variables (output records are initialized once on
   startup, but do not receive updates when the variable changes on the server).
-* Support for GUID-based node IDs.
 * Monitoring nodes at a sampling rate that is higher than the publishing
   interval (using queueing).
 * Using server-provided time-stamps when monitoring nodes.
@@ -134,14 +133,21 @@ commas. At the moment, the following options are supported:
   shell commands. If the name of the subscription is not specified explicitly,
   the subscription with the name `default` is used.
 
-The node ID identifies the process variable on the server. There are two ways,
-how a node ID can be specified: string and numeric. A string identifier has the
-form `str:<namespace index>,<string ID>`, where `<namespace index>` is a number
-identifying the namespace of the node ID and `<string ID>` is the node's name.
-A numeric identifieer has the form `num:<namespace index>,<numeric ID>`, where
+The node ID identifies the process variable on the server. There are three ways
+how a node ID can be specified: string, numeric, and GUID. In most applications,
+string-based IDs are used.
+
+A string identifier has the form `str:<namespace index>,<string ID>`, where
 `<namespace index>` is a number identifying the namespace of the node ID and
-`<numeric ID>` is the node's numeric ID. In most applications, string-based IDs
-are used.
+`<string ID>` is the node's name.
+
+A numeric identifier has the form `num:<namespace index>,<numeric ID>`, where
+`<namespace index>` is a number identifying the namespace of the node ID and
+`<numeric ID>` is the node's numeric ID.
+
+A GUID identifier has the form `num:<namespace index>,<GUID>`, where
+`<namespace index>` is a number identifying the namespace of the node ID and
+`<GUID>` is a valid GUID (e.g. `7877004d-bb37-41d2-9017-2ef483c49e8f`).
 
 The data type specification is optional. If the data type is not specified, it
 is guessed. For input records that works pretty well because the server sends
@@ -190,6 +196,7 @@ be chosen for each record:
 * `@C0 (no_read_on_init,convert=direct) str:2,other.process.variable Float`
 * `@C0 num:2,353 Int16`
 * `@C0 (sampling_interval=500.0,subscription=mysub) str:4,some.process.variable`
+* `@C0 guid:3,7877004d-bb37-41d2-9017-2ef483c49e8f`
 
 **Examples for records:**
 

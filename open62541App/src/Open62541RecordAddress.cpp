@@ -29,7 +29,10 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cinttypes>
 #include <climits>
+#include <cstdio>
+#include <regex>
 #include <stdexcept>
 #include <tuple>
 
@@ -85,8 +88,55 @@ std::string trim(const std::string &str, const std::string &whitespace =
   return str.substr(start, end - start);
 }
 
+namespace {
+  std::regex const guidRegex(
+    "[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}");
+} // anonymous namespace
+
 UaNodeId parseNodeId(const std::string &nodeIdString) {
-  if (startsWithIgnoreCase(nodeIdString, "num:")) {
+  if (startsWithIgnoreCase(nodeIdString, "guid:")) {
+    auto commaPos = nodeIdString.find(',');
+    if (commaPos == std::string::npos) {
+      throw std::invalid_argument(
+          std::string("Invalid node ID in record address: ") + nodeIdString);
+    }
+    auto nsString = nodeIdString.substr(4, commaPos - 4);
+    auto idString = nodeIdString.substr(commaPos + 1);
+    unsigned long ns;
+    try {
+      std::size_t convertedLength;
+      ns = std::stoul(nsString, &convertedLength);
+      if (convertedLength != nsString.length()) {
+        throw std::invalid_argument("Only partial string has been converted.");
+      }
+    } catch (std::invalid_argument&) {
+      throw std::invalid_argument(
+          std::string("Invalid namespace index in node ID: ") + nodeIdString);
+    } catch (std::out_of_range&) {
+      throw std::invalid_argument(
+          std::string("Invalid namespace index in node ID: ") + nodeIdString);
+    }
+    if (ns > 65535) {
+      throw std::invalid_argument(
+          std::string("Invalid namespace index in node ID: ") + nodeIdString);
+    }
+    // sscanf cannot detect all kind of ways in which a GUID may be invalid. For
+    // example, if one of the sequences is short, sscanf will simply assuming a
+    // leading zero. For this reason, we use a regular expression in order to
+    // verify that the string is in fact a valid GUID.
+    if (!std::regex_match(idString, guidRegex)) {
+      throw std::invalid_argument(
+          std::string("Invalid GUID in node ID: ") + nodeIdString);
+    }
+    UA_Guid guid;
+    std::sscanf(
+      idString.c_str(), "%08" PRIx32 "-%04" PRIx16 "-%04" PRIx16 "-%02" PRIx8
+      "%02" PRIx8 "-%02" PRIx8 "%02" PRIx8 "%02" PRIx8 "%02" PRIx8 "%02" PRIx8
+      "%02" PRIx8, &guid.data1, &guid.data2, &guid.data3, &guid.data4[0],
+      &guid.data4[1], &guid.data4[2], &guid.data4[3], &guid.data4[4],
+      &guid.data4[5], &guid.data4[6], &guid.data4[7]);
+    return UaNodeId::createGuid(static_cast<UA_UInt16>(ns), guid);
+  } else if (startsWithIgnoreCase(nodeIdString, "num:")) {
     auto commaPos = nodeIdString.find(',');
     if (commaPos == std::string::npos) {
       throw std::invalid_argument(
