@@ -145,7 +145,7 @@ A numeric identifier has the form `num:<namespace index>,<numeric ID>`, where
 `<namespace index>` is a number identifying the namespace of the node ID and
 `<numeric ID>` is the node's numeric ID.
 
-A GUID identifier has the form `num:<namespace index>,<GUID>`, where
+A GUID identifier has the form `guid:<namespace index>,<GUID>`, where
 `<namespace index>` is a number identifying the namespace of the node ID and
 `<GUID>` is a valid GUID (e.g. `7877004d-bb37-41d2-9017-2ef483c49e8f`).
 
