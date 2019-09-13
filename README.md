@@ -77,9 +77,9 @@ the section called “Using encryption” later in this document.
 
 ### Configuring records
 
-The device support works with the aai, aao, ai, ao, bi, bo, longin, longout,
-lsi, lso, mbbi, mbbo, mbbiDirect, mbboDirect, stringin, and stringout records.
-It is used by setting `DTYP` to `open62541`.
+The device support works with the aai, aao, ai, ao, bi, bo, int64in, int64out,
+longin, longout, lsi, lso, mbbi, mbbo, mbbiDirect, mbboDirect, stringin, and
+stringout records. It is used by setting `DTYP` to `open62541`.
 
 Input records can be polled or they can be monitored through a subscription.
 When `SCAN` is set to `I/O Intr`, a monitored item for the specified node is
@@ -158,9 +158,10 @@ to default data type is as follows:
 
 * ao: Double
 * bo: Boolean
+* int64out: Int64
 * longout: Int32
 * mbbo and mbboDirect: UInt32
-* lsi, lso, stringin, stringout: String
+* lso, stringout: String
 
 For the aao record, it depends on the type specified in the `FTVL` field:
 

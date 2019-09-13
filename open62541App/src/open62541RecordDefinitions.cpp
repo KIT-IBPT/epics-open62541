@@ -40,6 +40,8 @@
 #include "Open62541AoRecord.h"
 #include "Open62541BiRecord.h"
 #include "Open62541BoRecord.h"
+#include "Open62541Int64inRecord.h"
+#include "Open62541Int64outRecord.h"
 #include "Open62541LonginRecord.h"
 #include "Open62541LongoutRecord.h"
 #include "Open62541LsiRecord.h"
@@ -351,6 +353,46 @@ struct {
   processRecord<Open62541BoRecord>
 };
 epicsExportAddress(dset, devBoOpen62541);
+
+/**
+ * int64in record type.
+ */
+struct {
+  long numberOfFunctionPointers;
+  DEVSUPFUN report;
+  DEVSUPFUN init;
+  DEVSUPFUN init_record;
+  DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
+  DEVSUPFUN read;
+} devInt64inOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541Int64inRecord, ::int64inRecord>,
+  getInterruptInfo<Open62541Int64inRecord>,
+  processRecord<Open62541Int64inRecord>
+};
+epicsExportAddress(dset, devInt64inOpen62541);
+
+/**
+ * int64out record type.
+ */
+struct {
+  long numberOfFunctionPointers;
+  DEVSUPFUN report;
+  DEVSUPFUN init;
+  DEVSUPFUN init_record;
+  DEVSUPFUN_GET_IOINT_INFO get_ioint_info;
+  DEVSUPFUN write;
+} devInt64outOpen62541 = {
+  5,
+  nullptr,
+  nullptr,
+  initRecord<Open62541Int64outRecord, ::int64outRecord>,
+  nullptr,
+  processRecord<Open62541Int64outRecord>
+};
+epicsExportAddress(dset, devInt64outOpen62541);
 
 /**
  * longin record type.
