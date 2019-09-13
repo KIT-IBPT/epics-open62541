@@ -43,10 +43,10 @@ a file called `configure/CONFIG_SITE.local` and setting `USR_CFLAGS` and
 `configure/EXAMPLE_CONFIG_SITE.local`.
 
 If you want to enable encryption support, you need to installe
-[Embed TLS](https://tls.mbed.org/) and set `USE_EMBEDTLS` to `YES` in
-`configure/CONFIG_SITE.local`. If Embed TLS is not installed in one of the
+[mbed TLS](https://tls.mbed.org/) and set `USE_MBEDTLS` to `YES` in
+`configure/CONFIG_SITE.local`. If mbed TLS is not installed in one of the
 standard locations where the compiler and linker will find it, you might also
-have to specify `EMBEDTLS_LIB` and `EMBEDTLS_INCLUDE`.
+have to specify `MBEDTLS_LIB` and `MBEDTLS_INCLUDE`.
 
 Usage
 -----

@@ -66,7 +66,7 @@ std::string hexDump(unsigned char *data, std::size_t size) {
 
 void dumpServerCertificates(
     std::string const &endpointUrl, std::string const &targetDirectoryPath) {
-// We can only use the hash functions from Embed TLS if the device support is
+// We can only use the hash functions from mbed TLS if the device support is
 // actually compiled with encryption support.
 #ifdef UA_ENABLE_ENCRYPTION
   UA_Client *client = nullptr;
