@@ -242,8 +242,19 @@ void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::success(
   // already full (it will return zero in that case). In this case, we do not
   // set the monitoringValuePending flag because we want to call scanIoRequest
   // again when we receive another notification.
+  // The most likely case when scanIoRequest will fail is when the IOC has not
+  // been fully initialized yet. In this case, calling scheduleProcessing will
+  // usually work. If this does not work either, we print an error message.
   if (::scanIoRequest(record.ioIntrModeScanPvt)) {
     record.monitoringValuePending = true;
+  } else {
+    if (record.scheduleProcessing()) {
+      record.monitoringValuePending = true;
+    } else {
+      errorExtendedPrintf(
+        "%s Could not schedule asynchronous processing of record. Monitored item notification is not going to be processed.",
+        record.getRecord()->name);
+    }
   }
 }
 
@@ -281,6 +292,20 @@ void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::failure(
   // again when we receive another notification.
   if (::scanIoRequest(record.ioIntrModeScanPvt)) {
     record.monitoringValuePending = true;
+  }
+  // The most likely case when scanIoRequest will fail is when the IOC has not
+  // been fully initialized yet. In this case, calling scheduleProcessing will
+  // usually work. If this does not work either, we print an error message.
+  if (::scanIoRequest(record.ioIntrModeScanPvt)) {
+    record.monitoringValuePending = true;
+  } else {
+    if (record.scheduleProcessing()) {
+      record.monitoringValuePending = true;
+    } else {
+      errorExtendedPrintf(
+        "%s Could not schedule asynchronous processing of record. Monitored item notification is not going to be processed.",
+        record.getRecord()->name);
+    }
   }
 }
 

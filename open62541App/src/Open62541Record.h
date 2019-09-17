@@ -131,8 +131,11 @@ protected:
    * Schedules processing of the record. This method should only be called from
    * an asynchronous callback that has been scheduled by the
    * {@link processPrepare()} method.
+   *
+   * This method returns true if the processing has been scheduled successfully
+   * and false otherwise.
    */
-  void scheduleProcessing();
+  bool scheduleProcessing();
 
   /**
    * Validates the record address. This method can be overridden by child
@@ -220,12 +223,14 @@ void Open62541Record<RecordType>::processRecord() {
 }
 
 template<typename RecordType>
-void Open62541Record<RecordType>::scheduleProcessing() {
+bool Open62541Record<RecordType>::scheduleProcessing() {
   // Registering the callback establishes a happens-before relationship due to
   // an internal lock. Therefore, data written before registering the callback
   // is seen by the callback function.
-  ::callbackRequestProcessCallback(&this->processCallback, priorityMedium,
-      this->record);
+  // The callbackRequestProcessCallback function returns zero to indicate
+  // success, so we have to invert the return value.
+  return !::callbackRequestProcessCallback(&this->processCallback,
+      priorityMedium, this->record);
 }
 
 template<typename RecordType>
