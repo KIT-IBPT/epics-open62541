@@ -40,8 +40,10 @@
 #include "Open62541AoRecord.h"
 #include "Open62541BiRecord.h"
 #include "Open62541BoRecord.h"
+#ifdef DBR_INT64
 #include "Open62541Int64inRecord.h"
 #include "Open62541Int64outRecord.h"
+#endif
 #include "Open62541LonginRecord.h"
 #include "Open62541LongoutRecord.h"
 #include "Open62541LsiRecord.h"
@@ -354,9 +356,10 @@ struct {
 };
 epicsExportAddress(dset, devBoOpen62541);
 
+#ifdef DBR_INT64
 /**
  * int64in record type.
- */
+ */  
 struct {
   long numberOfFunctionPointers;
   DEVSUPFUN report;
@@ -373,7 +376,7 @@ struct {
   processRecord<Open62541Int64inRecord>
 };
 epicsExportAddress(dset, devInt64inOpen62541);
-
+  
 /**
  * int64out record type.
  */
@@ -393,7 +396,8 @@ struct {
   processRecord<Open62541Int64outRecord>
 };
 epicsExportAddress(dset, devInt64outOpen62541);
-
+#endif
+  
 /**
  * longin record type.
  */

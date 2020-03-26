@@ -13,6 +13,12 @@ LIBRARY_IOC += open62541
 # xxxRecord.h will be created from xxxRecord.dbd
 #DBDINC += xxxRecord
 # install open62541.dbd into <top>/dbd
+
+# add int64_in/out records definition
+ifdef BASE_3_16
+DBD += open62541_int64.dbd
+endif
+
 DBD += open62541.dbd
 
 # specify all source files to be compiled and added to the library
