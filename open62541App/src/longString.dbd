@@ -1,0 +1,2 @@
+device(lsi,INST_IO,devLsiOpen62541,"open62541")
+device(lso,INST_IO,devLsoOpen62541,"open62541")

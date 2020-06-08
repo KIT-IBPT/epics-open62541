@@ -32,6 +32,14 @@
 #include <dbCommon.h>
 #include <devSup.h>
 #include <epicsExport.h>
+#include <epicsVersion.h>
+
+#if EPICS_VERSION > 3 || (EPICS_VERSION == 3 && EPICS_REVISION >= 16)
+#  define OPEN62541_EPICS_INT64_SUPPORTED 1
+#endif
+#if EPICS_VERSION > 3 || (EPICS_VERSION == 3 && (EPICS_REVISION >= 16 || (EPICS_REVISION == 15 && EPICS_MODIFICATION >= 1)))
+#  define OPEN62541_EPICS_LONG_STRING_SUPPORTED 1
+#endif
 
 #include "open62541Error.h"
 #include "Open62541AaiRecord.h"
@@ -40,12 +48,16 @@
 #include "Open62541AoRecord.h"
 #include "Open62541BiRecord.h"
 #include "Open62541BoRecord.h"
+#ifdef OPEN62541_EPICS_INT64_SUPPORTED
 #include "Open62541Int64inRecord.h"
 #include "Open62541Int64outRecord.h"
+#endif // OPEN62541_EPICS_INT64_SUPPORTED
 #include "Open62541LonginRecord.h"
 #include "Open62541LongoutRecord.h"
+#ifdef OPEN62541_EPICS_LONG_STRING_SUPPORTED
 #include "Open62541LsiRecord.h"
 #include "Open62541LsoRecord.h"
+#endif // OPEN62541_EPICS_LONG_STRING_SUPPORTED
 #include "Open62541MbbiDirectRecord.h"
 #include "Open62541MbbiRecord.h"
 #include "Open62541MbboDirectRecord.h"
@@ -354,6 +366,8 @@ struct {
 };
 epicsExportAddress(dset, devBoOpen62541);
 
+#ifdef DBR_INT64
+
 /**
  * int64in record type.
  */
@@ -393,6 +407,8 @@ struct {
   processRecord<Open62541Int64outRecord>
 };
 epicsExportAddress(dset, devInt64outOpen62541);
+
+#endif // DBR_INT64
 
 /**
  * longin record type.
@@ -434,6 +450,8 @@ struct {
 };
 epicsExportAddress(dset, devLongoutOpen62541);
 
+#ifdef OPEN62541_EPICS_LONG_STRING_SUPPORTED
+
 /**
  * lsi record type.
  */
@@ -473,6 +491,8 @@ struct {
   processRecord<Open62541LsoRecord>
 };
 epicsExportAddress(dset, devLsoOpen62541);
+
+#endif // OPEN62541_EPICS_LONG_STRING_SUPPORTED
 
 /**
  * mbbi record type.

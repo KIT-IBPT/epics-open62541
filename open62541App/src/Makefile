@@ -15,6 +15,20 @@ LIBRARY_IOC += open62541
 # install open62541.dbd into <top>/dbd
 DBD += open62541.dbd
 
+open62541_DBD += common.dbd
+ifdef BASE_3_16
+open62541_DBD += int64.dbd
+open62541_DBD += longString.dbd
+endif
+# The lsi and lso records are also available in 3.15 starting with 3.15.0.2.
+# We cannot easily check for a certain patch level, so enable these records for
+# all versions starting with 3.15.1.
+ifeq (BASE_3_15, YES)
+ifneq (EPICS_MODIFICATION, 0)
+open62541_DBD += longString.dbd
+endif
+endif
+
 # specify all source files to be compiled and added to the library
 open62541_SRCS += open62541.c
 open62541_SRCS += open62541Error.cpp
