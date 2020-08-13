@@ -290,9 +290,6 @@ void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::failure(
   // already full (it will return zero in that case). In this case, we do not
   // set the monitoringValuePending flag because we want to call scanIoRequest
   // again when we receive another notification.
-  if (::scanIoRequest(record.ioIntrModeScanPvt)) {
-    record.monitoringValuePending = true;
-  }
   // The most likely case when scanIoRequest will fail is when the IOC has not
   // been fully initialized yet. In this case, calling scheduleProcessing will
   // usually work. If this does not work either, we print an error message.
