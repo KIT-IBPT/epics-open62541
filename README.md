@@ -391,6 +391,26 @@ openssl x509 \
   -text
 ```
 
+Updating the open62541 library
+------------------------------
+
+The open62541 library is bundled with this device support in order to make the
+build process as easy as possible. Usually, there is no need to update the
+bundled library, so this information is mainly intended for the maintainers of
+the device support.
+
+In order to build the single-file distribution that is bundled with this device
+support, one has to run the following commands in the open62541 source tree:
+
+```
+cmake -DUA_ENABLE_AMALGAMATION=ON
+make open62541-amalgamation-header open62541-amalgamation-source
+```
+
+This will create the two files `open62541.c` and `open62541.h` in the root of
+the source distribution, which can then be copied to the open62541App/src of the
+device support.
+
 Copyright / License
 -------------------
 
