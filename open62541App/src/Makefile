@@ -13,7 +13,7 @@ LIBRARY_IOC += open62541
 # xxxRecord.h will be created from xxxRecord.dbd
 #DBDINC += xxxRecord
 # install open62541.dbd into <top>/dbd
-DBD += open62541.dbd
+DBDCAT += open62541.dbd
 
 open62541_DBD += common.dbd
 ifdef BASE_3_16
