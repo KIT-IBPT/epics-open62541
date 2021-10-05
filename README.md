@@ -118,7 +118,7 @@ commas. At the moment, the following options are supported:
   record's value is *not* initialized by reading the current value from the
   server.
 * `sampling_interval`: Only supported for input records that are operated in
-  `I/O Intr´ mode. In this case, this option specifies the sampling interval
+  `I/O Intr` mode. In this case, this option specifies the sampling interval
   for the respective OPC UA node in milliseconds (how often the OPC UA server
   will check the node's value for changes). Updates are still only received
   according to the publishing interval of the associated subscription and the
