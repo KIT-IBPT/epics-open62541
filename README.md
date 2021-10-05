@@ -8,8 +8,8 @@ the OPC UA protocol.
 
 The Open62541 library is distributed with this device support in the form of the
 single-file distribution. Consequently, the files `open62541.c` and
-`open62541.h` are distributed under the terms of the Mozilla Public License
-version 2.0, which can be found in the file [LICENSE-MPL].
+`open62541.h` are distributed under the terms of the [Mozilla Public License
+version 2.0](LICENSE-MPL.txt).
 
 Features
 --------
