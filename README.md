@@ -55,7 +55,7 @@ In order to use this device support in an EPICS IOC, one has to add its install
 path to the `configure/RELEASE` file of the IOC (e.g.
 `OPEN62541 = /path/to/epics/modules/open62541`) and add a dependency on the
 library and DBD file to the IOCs `Makefile` (e.g. `xxx_DBD += open62541.dbd` and
-`xxx_LIBS += opent62541`).
+`xxx_LIBS += open62541`).
 
 ### Connecting to a server
 
