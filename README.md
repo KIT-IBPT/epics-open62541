@@ -216,11 +216,13 @@ record(ao, "$(P)$(R)ao") {
 }
 ```
 
+```
 record(ai, "$(P)$(R)aiMonitoring") {
   field(DTYP, "open62541")
   field(INP,  "@$(CONN) str:2,process.variable")
   field(SCAN, "I/O Intr")
 }
+```
 
 ### Configuring subscriptions
 
