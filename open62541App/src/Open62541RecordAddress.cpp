@@ -1,6 +1,6 @@
 /*
- * Copyright 2017-2019 aquenos GmbH.
- * Copyright 2017-2019 Karlsruhe Institute of Technology.
+ * Copyright 2017-2023 aquenos GmbH.
+ * Copyright 2017-2023 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -32,6 +32,7 @@
 #include <cinttypes>
 #include <climits>
 #include <cstdio>
+#include <limits>
 #include <regex>
 #include <stdexcept>
 #include <tuple>
