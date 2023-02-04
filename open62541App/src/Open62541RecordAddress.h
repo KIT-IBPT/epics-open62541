@@ -31,6 +31,7 @@
 #define OPEN62541_EPICS_RECORD_ADDRESS_H
 
 #include <cstdint>
+#include <limits>   // std::numeric_limits
 #include <string>
 
 extern "C" {
