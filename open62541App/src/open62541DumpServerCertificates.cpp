@@ -1,6 +1,6 @@
 /*
- * Copyright 2019 aquenos GmbH.
- * Copyright 2019 Karlsruhe Institute of Technology.
+ * Copyright 2019-2024 aquenos GmbH.
+ * Copyright 2019-2024 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -38,9 +38,13 @@ extern "C" {
 
 #include "open62541.h"
 
-#ifdef UA_ENABLE_ENCRYPTION
+#ifdef UA_ENABLE_ENCRYPTION_MBEDTLS
 #include <mbedtls/md.h>
-#endif // UA_ENABLE_ENCRYPTION
+#endif // UA_ENABLE_ENCRYPTION_MBEDTLS
+
+#if defined (UA_ENABLE_ENCRYPTION_LIBRESSL) || defined (UA_ENABLE_ENCRYPTION_OPENSSL)
+#include <openssl/sha.h>
+#endif // UA_ENABLE_ENCRYPTION_OPENSSL
 } // extern "C"
 
 #include "UaException.h"
@@ -88,22 +92,34 @@ void dumpServerCertificates(
     if (statusCode != UA_STATUSCODE_GOOD) {
       throw UaException(statusCode);
     }
+#  if defined (UA_ENABLE_ENCRYPTION_MBEDTLS)
     auto mdInfo = mbedtls_md_info_from_type(MBEDTLS_MD_SHA256);
     if (!mdInfo) {
       throw std::runtime_error(
         "mbedtls_md_info_from_type returned null for MBEDTLS_MD_SHA256.");
     }
-    std::unordered_set<std::string> seenFilenames;
     unsigned char digest[MBEDTLS_MD_MAX_SIZE];
+    std::size_t const mdSize = mbedtls_md_get_size(mdInfo);
+#  elif defined (UA_ENABLE_ENCRYPTION_LIBRESSL) || defined (UA_ENABLE_ENCRYPTION_OPENSSL)
+    unsigned char digest[SHA256_DIGEST_LENGTH];
+    std::size_t const mdSize = SHA256_DIGEST_LENGTH;
+#  else // UA_ENABLE_ENRYPTION_...
+#    error "The selected crypto library is not supported."
+#  endif // UA_ENABLE_ENCRYPTION_...
+    std::unordered_set<std::string> seenFilenames;
     for (std::size_t i = 0; i < endpointDescriptionsSize; ++i) {
       auto serverCertificate = endpointDescriptions[i].serverCertificate;
       if (!serverCertificate.length) {
         continue;
       }
+#  if defined (UA_ENABLE_ENCRYPTION_MBEDTLS)
       if (mbedtls_md(mdInfo, serverCertificate.data, serverCertificate.length, digest)) {
         throw std::runtime_error("mbedtls_md failed.");
       }
-      auto filename = hexDump(digest, mbedtls_md_get_size(mdInfo)) + ".der";
+#  elif defined (UA_ENABLE_ENCRYPTION_LIBRESSL) || defined (UA_ENABLE_ENCRYPTION_OPENSSL)
+      SHA256(serverCertificate.data, serverCertificate.length, digest);
+#  endif // UA_ENABLE_ENCRYPTION_...
+      auto filename = hexDump(digest, mdSize) + ".der";
       // If we have already seen the same filename before (because we have
       // encountered the certificate before), we do not process it again.
       if (!seenFilenames.insert(filename).second) {

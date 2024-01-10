@@ -41,20 +41,42 @@ CHECK_RELEASE = YES
 -include $(TOP)/../CONFIG_SITE.local
 -include $(TOP)/configure/CONFIG_SITE.local
 
-# If we want to enable the encryption features, we need libmbedtls and have to
-# define the UA_ENABLE_ENCRYPTION macro. We do this AFTER including
-# CONFIG_SITE.local so that this file can be used to define USE_MBEDTLS,
-# MBEDTLS_INCLUDE, and MBEDTLS_LIB.
+# If we want to enable the encryption features, we need libmbedtls, LibreSSL,
+# or OpenSSL and have to define the appropriate UA_ENABLE_ENCRYPTION_* macro.
+# We do this AFTER including CONFIG_SITE.local so that this file can be used to
+# define USE_MBEDTLS, USE_LIBRESSL, or USE_OPENSSL and  MBEDTLS_INCLUDE,
+# MBEDTLS_LIB, LIBRESSL_INCLUDE, LIBRESSL_LIB, OPENSSL_INCLUDE, or OPENSSL_LIB.
 ifeq ($(USE_MBEDTLS),YES)
   USR_CFLAGS += -DUA_ENABLE_ENCRYPTION_MBEDTLS
   USR_CXXFLAGS += -DUA_ENABLE_ENCRYPTION_MBEDTLS
   USR_SYS_LIBS += mbedcrypto mbedtls mbedx509
+  ifdef MBEDTLS_LIB
+    USR_LDFLAGS += -L$(MBEDTLS_LIB)
+  endif
+  ifdef MBEDTLS_INCLUDE
+    USR_CFLAGS += -I$(MBEDTLS_INCLUDE)
+    USR_CXXFLAGS += -I$(MBEDTLS_INCLUDE)
+  endif
+else ifeq ($(USE_LIBRESSL),YES)
+  USR_CFLAGS += -DUA_ENABLE_ENCRYPTION_LIBRESSL
+  USR_CXXFLAGS += -DUA_ENABLE_ENCRYPTION_LIBRESSL
+  USR_SYS_LIBS += crypto
+  ifdef LIBRESSL_LIB
+    USR_LDFLAGS += -L$(LIBRESSL_LIB)
+  endif
+  ifdef LIBRESSL_INCLUDE
+    USR_CFLAGS += -I$(LIBRESSL_INCLUDE)
+    USR_CXXFLAGS += -I$(LIBRESSL_INCLUDE)
+  endif
+else ifeq ($(USE_OPENSSL),YES)
+  USR_CFLAGS += -DUA_ENABLE_ENCRYPTION_OPENSSL
+  USR_CXXFLAGS += -DUA_ENABLE_ENCRYPTION_OPENSSL
+  USR_SYS_LIBS += crypto
+  ifdef OPENSSL_LIB
+    USR_LDFLAGS += -L$(OPENSSL_LIB)
+  endif
+  ifdef OPENSSL_INCLUDE
+    USR_CFLAGS += -I$(OPENSSL_INCLUDE)
+    USR_CXXFLAGS += -I$(OPENSSL_INCLUDE)
+  endif
 endif
-ifdef MBEDTLS_LIB
-  USR_LDFLAGS += -L$(MBEDTLS_LIB)
-endif
-ifdef MBEDTLS_INCLUDE
-  USR_CFLAGS += -I$(MBEDTLS_INCLUDE)
-  USR_CXXFLAGS += -I$(MBEDTLS_INCLUDE)
-endif
-

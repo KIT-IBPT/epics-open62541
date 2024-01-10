@@ -7,9 +7,19 @@
 # USR_CXXFLAGS += -std=c++11
 
 # If you want to compile the device support with cryptographic functions, set
-# USE_MBEDTLS to YES. If Mbed TLS is not installed in a path where the compiler
-# and linker will find it automatically, you might also have to set MBEDTLS_LIB
-# and MBEDTLS_INCLUDE.
+# one of USE_MBEDTLS, USE_LIBRESSL, and USE_OPENSSL to YES. If the respective
+# library is not installed in a path where the compiler and linker will find it
+# automatically, you might also have to set MBEDTLS_LIB, MBEDTLS_INCLUDE,
+# LIBRESSL_LIB, LIBRESSL_INCLUDE, OPENSSL_LIB, or OPNSSL_INCLUDE.
+#
 # USE_MBEDTLS = YES
 # MBETLS_LIB = /path/to/mbedtls/lib
 # MBETLS_INCLUDE = /path/to/mbedtls/include
+#
+# USE_LIBRESSL = YES
+# LIBRESSL_LIB = /path/to/libressl/lib
+# LIBRESSL_INCLUDE = /path/to/libressl/include
+#
+# USE_OPENSSL = YES
+# OPENSSL_LIB = /path/to/openssl/lib
+# OPENSSL_INCLUDE = /path/to/openssl/include
