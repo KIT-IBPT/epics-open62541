@@ -1,6 +1,6 @@
 /*
- * Copyright 2019 aquenos GmbH.
- * Copyright 2019 Karlsruhe Institute of Technology.
+ * Copyright 2019-2024 aquenos GmbH.
+ * Copyright 2019-2024 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -82,8 +82,8 @@ protected:
           "Read variant is an array, but a scalar is needed.");
     }
     const Open62541RecordAddress &address = getRecordAddress();
-    switch (value.getType().typeIndex) {
-    case UA_TYPES_STRING: {
+    switch (value.getType().typeKind) {
+    case UA_DATATYPEKIND_STRING: {
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
               != Open62541RecordAddress::DataType::string) {
@@ -106,7 +106,7 @@ protected:
       this->getRecord()->len = copySize;
       break;
     }
-    case UA_TYPES_BYTESTRING: {
+    case UA_DATATYPEKIND_BYTESTRING: {
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType() != Open62541RecordAddress::DataType::byteString) {
         throw std::runtime_error(

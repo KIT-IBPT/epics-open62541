@@ -1,6 +1,6 @@
 /*
- * Copyright 2017-2019 aquenos GmbH.
- * Copyright 2017-2019 Karlsruhe Institute of Technology.
+ * Copyright 2017-2024 aquenos GmbH.
+ * Copyright 2017-2024 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -95,8 +95,8 @@ protected:
           "Read variant is an array, but a scalar is needed.");
     }
     const Open62541RecordAddress &address = getRecordAddress();
-    switch (value.getType().typeIndex) {
-    case UA_TYPES_BOOLEAN:
+    switch (value.getType().typeKind) {
+    case UA_DATATYPEKIND_BOOLEAN:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
               != Open62541RecordAddress::DataType::boolean) {
@@ -115,7 +115,7 @@ protected:
             (*value.getData<UA_Boolean>()) ? 1 : 0;
       }
       break;
-    case UA_TYPES_SBYTE:
+    case UA_DATATYPEKIND_SBYTE:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType() != Open62541RecordAddress::DataType::sbyte) {
         throw std::runtime_error(
@@ -131,7 +131,7 @@ protected:
         this->getRecord()->rval = *value.getData<UA_SByte>();
       }
       break;
-    case UA_TYPES_BYTE:
+    case UA_DATATYPEKIND_BYTE:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType() != Open62541RecordAddress::DataType::byte) {
         throw std::runtime_error(
@@ -147,7 +147,7 @@ protected:
         this->getRecord()->rval = *value.getData<UA_Byte>();
       }
       break;
-    case UA_TYPES_UINT16:
+    case UA_DATATYPEKIND_UINT16:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
               != Open62541RecordAddress::DataType::uint16) {
@@ -164,7 +164,7 @@ protected:
         this->getRecord()->rval = *value.getData<UA_UInt16>();
       }
       break;
-    case UA_TYPES_INT16:
+    case UA_DATATYPEKIND_INT16:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType() != Open62541RecordAddress::DataType::int16) {
         throw std::runtime_error(
@@ -180,7 +180,7 @@ protected:
         this->getRecord()->rval = *value.getData<UA_Int16>();
       }
       break;
-    case UA_TYPES_UINT32:
+    case UA_DATATYPEKIND_UINT32:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
               != Open62541RecordAddress::DataType::uint32) {
@@ -200,7 +200,7 @@ protected:
         skipConversion = true;
       }
       break;
-    case UA_TYPES_INT32:
+    case UA_DATATYPEKIND_INT32:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType() != Open62541RecordAddress::DataType::int32) {
         throw std::runtime_error(
@@ -216,7 +216,7 @@ protected:
         this->getRecord()->rval = *value.getData<UA_Int32>();
       }
       break;
-    case UA_TYPES_UINT64:
+    case UA_DATATYPEKIND_UINT64:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
               != Open62541RecordAddress::DataType::uint64) {
@@ -236,7 +236,7 @@ protected:
         skipConversion = true;
       }
       break;
-    case UA_TYPES_INT64:
+    case UA_DATATYPEKIND_INT64:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType() != Open62541RecordAddress::DataType::int64) {
         throw std::runtime_error(
@@ -255,7 +255,7 @@ protected:
         skipConversion = true;
       }
       break;
-    case UA_TYPES_FLOAT:
+    case UA_DATATYPEKIND_FLOAT:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
               != Open62541RecordAddress::DataType::floatType) {
@@ -275,7 +275,7 @@ protected:
         skipConversion = true;
       }
       break;
-    case UA_TYPES_DOUBLE:
+    case UA_DATATYPEKIND_DOUBLE:
       if (address.getDataType() != Open62541RecordAddress::DataType::unspecified
           && address.getDataType()
               != Open62541RecordAddress::DataType::doubleType) {

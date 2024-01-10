@@ -1,6 +1,6 @@
 /*
- * Copyright 2017-2019 aquenos GmbH.
- * Copyright 2017-2019 Karlsruhe Institute of Technology.
+ * Copyright 2017-2024 aquenos GmbH.
+ * Copyright 2017-2024 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -443,7 +443,7 @@ void ServerConnection::configureClient() {
 bool ServerConnection::connect() {
   UA_StatusCode status;
   if (useAuthentication) {
-    status = UA_Client_connect_username(client, endpointUrl.c_str(),
+    status = UA_Client_connectUsername(client, endpointUrl.c_str(),
         username.c_str(), password.c_str());
   } else {
     status = UA_Client_connect(client, endpointUrl.c_str());
@@ -542,12 +542,23 @@ bool ServerConnection::maybeResetConnection(UA_StatusCode statusCode) {
   default:
     return false;
   }
-  // We do not check the result of UA_Client_disconnect on purpose: Even if
-  // there was an error, the next logical step would be resetting the client.
-  UA_Client_disconnect(client);
-  UA_Client_reset(client);
-  // After resetting the client, we have to apply the configuration again.
-  configureClient();
+  // In case of an error, disconnecting the client might be sufficient, but
+  // there might also be cases where creating a fresh client is beneficial. We
+  // do not know which case we have, so we always destroy the whole client.
+  // When the client is destroyed, it is disconnected automatically.
+  // In the past, we simply reset the client, but recent versions of the
+  // open62541 library do not expose this API any longer. In order to still be
+  // able to assume in other parts of the code that there always is a client
+  // object, we first allocate the new client and only destroy the old client
+  // if the allocation was successful. In the unlikely event that the
+  // allocation fails, we continue using the old client object.
+  UA_Client *newClient = UA_Client_new();
+  if (newClient) {
+    UA_Client_delete(client);
+    client = newClient;
+    newClient = nullptr;
+    configureClient();
+  }
   // We also have to reset the status of all subscriptions and monitored items.
   for (auto &subscriptionEntry : subscriptions) {
     auto &subscription = subscriptionEntry.second;
