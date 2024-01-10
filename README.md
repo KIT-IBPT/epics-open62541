@@ -42,11 +42,14 @@ a file called `configure/CONFIG_SITE.local` and setting `USR_CFLAGS` and
 `USR_CXXFLAGS` in this file. An example can be found in
 `configure/EXAMPLE_CONFIG_SITE.local`.
 
-If you want to enable encryption support, you need to installe
-[mbed TLS](https://tls.mbed.org/) and set `USE_MBEDTLS` to `YES` in
-`configure/CONFIG_SITE.local`. If mbed TLS is not installed in one of the
-standard locations where the compiler and linker will find it, you might also
-have to specify `MBEDTLS_LIB` and `MBEDTLS_INCLUDE`.
+If you want to enable encryption support, you need one of the three supported
+cryptographic libraries ([LibreSSL](https://www.libressl.org/), [mbed TLS](
+https://tls.mbed.org/), or [OpenSSL](https://www.openssl.org/)). You can choose
+the library by setting either `USE_LIBRESSL`, `USE_MBEDTLS`, or `USE_OPENSSL`
+to `YES` in `configure/CONFIG_SITE.local`. If the library is not installed in
+one of the standard locations where the compiler and linker will find it, you
+might also have to specify `LIBRESSL_INCLUDE` and `LIBRESSL_LIB`,
+`MBEDTLS_INCLUDE` and `MBEDTLS_LIB`, or `OPENSSL_INCLUDE` and `OPENSSL_LIB`.
 
 Usage
 -----
@@ -269,8 +272,9 @@ interval than the publishing interval.
 ### Using encryption
 
 If the open62541 device support has been compiled with encryption support
-enabled (by adding `USE_MBEDTLS = YES` to `configure/CONFIG_SITE.local`), there
-are two additional IOC shell commands.
+enabled (by adding `USE_LIBRESSL = YES`, `USE_MBEDTLS = YES`, or
+`USE_OPENSSL = YES` to `configure/CONFIG_SITE.local`), there are two additional
+IOC shell commands.
 
 The `open62541ConnectionSetupEncrypted` is used instead of the
 `open62541ConnectionSetup` command and can be used to establish a signed or
