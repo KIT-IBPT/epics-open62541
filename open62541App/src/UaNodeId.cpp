@@ -1,6 +1,6 @@
 /*
- * Copyright 2019 aquenos GmbH.
- * Copyright 2019 Karlsruhe Institute of Technology.
+ * Copyright 2019-2024 aquenos GmbH.
+ * Copyright 2019-2024 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -63,7 +63,7 @@ UaNodeId &UaNodeId::operator=(UaNodeId const &other) {
 std::string UaNodeId::toString() const {
     UA_String tempStr;
     UA_String_init(&tempStr);
-  auto status = UA_NodeId_toString(&this->id, &tempStr);
+  auto status = UA_NodeId_print(&this->id, &tempStr);
   if (status != UA_STATUSCODE_GOOD) {
     throw UaException(status);
   }
