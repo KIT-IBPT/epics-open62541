@@ -1,6 +1,6 @@
 /*
- * Copyright 2017-2019 aquenos GmbH.
- * Copyright 2017-2019 Karlsruhe Institute of Technology.
+ * Copyright 2017-2024 aquenos GmbH.
+ * Copyright 2017-2024 Karlsruhe Institute of Technology.
  *
  * This program is free software: you can redistribute it and/or modify
  * it under the terms of the GNU Lesser General Public License as
@@ -72,6 +72,11 @@ public:
     {
       std::lock_guard<std::mutex> lock(monitoringMutex);
       monitoringEnabled = !command;
+      // We reset the monitoringFirstEventReceived flag because events might
+      // already have been received when the record has been in I/O Intr mode
+      // previously, but we do not want these events to count when checking
+      // whether an event has already been received for the current monitor.
+      monitoringFirstEventReceived = false;
     }
     std::string const &subscriptionName =
       this->getRecordAddress().getSubscription();
@@ -108,7 +113,7 @@ protected:
   Open62541InputRecord(RecordType *record) :
       Open62541Record<RecordType>(record, record->inp),
       monitoredItemCallback(std::make_shared<MonitoredItemCallbackImpl>(*this)),
-      monitoringEnabled(false), monitoringValuePending(false),
+      monitoringEnabled(false), monitoringFirstEventReceived(false),
       readSuccessful(false) {
     ::scanIoInit(&this->ioIntrModeScanPvt);
   }
@@ -168,7 +173,7 @@ private:
   ::IOSCANPVT ioIntrModeScanPvt;
   std::shared_ptr<MonitoredItemCallbackImpl> monitoredItemCallback;
   bool monitoringEnabled;
-  bool monitoringValuePending;
+  bool monitoringFirstEventReceived;
   std::mutex monitoringMutex;
   std::string readErrorMessage;
   bool readSuccessful;
@@ -178,18 +183,33 @@ private:
 
 template<typename RecordType>
 bool Open62541InputRecord<RecordType>::processPrepare() {
-  // If there is a value that has been received through a monitor callback, we
-  // are operating in I/O Intr mode and have to process this value instead of
-  // polling the server to retrieve a new value. We need to acquire the mutex
-  // because monitoringValuePending and also the actual value might be changed
-  // concurrently by the callback.
-  {
+  // If monitoring is enabled and the first value has been received, this
+  // function is most likeley called as the result of calling scanIoRequest. In
+  // this case, we do not poll the value from the server and instead use the
+  // last received value.
+  // There is a small chance that this function is called more than once
+  // without the value having changed in between. This should only happen when
+  // the server is overloaded and there is backlog of processing requests. In
+  // this case, we simply reuse the latest value, because any other approach
+  // would be much more complicated (e.g. using a queue of received values).
+  // We need to hold the monitoringMutext when checking the
+  // monitoringFirstEventReceived flag because it might be concurrently
+  // modified by the callback. We also have to hold it when calling
+  // processComplete, because the actual value might also be modified by the
+  // callback.
+  // We can check the monitoringEnabled flag without holding the mutex because
+  // this flag is only modified in getIoIntInfo and synchronization in EPICS
+  // Base ensures that calls to that function and processRecord() are
+  // serialized.
+  if (monitoringEnabled) {
     std::lock_guard<std::mutex> lock(monitoringMutex);
-    if (monitoringValuePending) {
-      monitoringValuePending = false;
+    // If we have not received an event yet, we completely ignore the
+    // processing request, keeping the last value and keeping the record in an
+    // undefined state if it has not been processed yet.
+    if (monitoringFirstEventReceived) {
       processComplete();
-      return false;
     }
+    return false;
   }
   auto callback = std::make_shared<ReadCallbackImpl>(*this);
   this->getServerConnection()->readAsync(this->getRecordAddress().getNodeId(),
@@ -230,27 +250,16 @@ void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::success(
   if (!record.monitoringEnabled) {
     return;
   }
+  record.monitoringFirstEventReceived = true;
   record.readSuccessful = true;
   record.readValue = value;
-  // If we have previously called scanIoRequest, but this has not been processed
-  // yet, we do not want to call scanIoRequest again. The newest value will be
-  // processed when the record is finally processed.
-  if (record.monitoringValuePending) {
-    return;
-  }
   // There is a small chance that scanIoRequest will fail because the queues are
-  // already full (it will return zero in that case). In this case, we do not
-  // set the monitoringValuePending flag because we want to call scanIoRequest
-  // again when we receive another notification.
+  // already full (it will return zero in that case).
   // The most likely case when scanIoRequest will fail is when the IOC has not
   // been fully initialized yet. In this case, calling scheduleProcessing will
   // usually work. If this does not work either, we print an error message.
-  if (::scanIoRequest(record.ioIntrModeScanPvt)) {
-    record.monitoringValuePending = true;
-  } else {
-    if (record.scheduleProcessing()) {
-      record.monitoringValuePending = true;
-    } else {
+  if (!::scanIoRequest(record.ioIntrModeScanPvt)) {
+    if (!record.scheduleProcessing()) {
       errorExtendedPrintf(
         "%s Could not schedule asynchronous processing of record. Monitored item notification is not going to be processed.",
         record.getRecord()->name);
@@ -272,6 +281,7 @@ void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::failure(
   if (!record.monitoringEnabled) {
     return;
   }
+  record.monitoringFirstEventReceived = true;
   record.readSuccessful = false;
   try {
     record.readErrorMessage = std::string("Error monitoring node: ")
@@ -280,25 +290,13 @@ void Open62541InputRecord<RecordType>::MonitoredItemCallbackImpl::failure(
     // We want to schedule processing of the record even if we cannot assemble
     // the error message for some obscure reason.
   }
-  // If we have previously called scanIoRequest, but this has not been processed
-  // yet, we do not want to call scanIoRequest again. The newest value will be
-  // processed when the record is finally processed.
-  if (record.monitoringValuePending) {
-    return;
-  }
   // There is a small chance that scanIoRequest will fail because the queues are
-  // already full (it will return zero in that case). In this case, we do not
-  // set the monitoringValuePending flag because we want to call scanIoRequest
-  // again when we receive another notification.
+  // already full (it will return zero in that case).
   // The most likely case when scanIoRequest will fail is when the IOC has not
   // been fully initialized yet. In this case, calling scheduleProcessing will
   // usually work. If this does not work either, we print an error message.
-  if (::scanIoRequest(record.ioIntrModeScanPvt)) {
-    record.monitoringValuePending = true;
-  } else {
-    if (record.scheduleProcessing()) {
-      record.monitoringValuePending = true;
-    } else {
+  if (!::scanIoRequest(record.ioIntrModeScanPvt)) {
+    if (!record.scheduleProcessing()) {
       errorExtendedPrintf(
         "%s Could not schedule asynchronous processing of record. Monitored item notification is not going to be processed.",
         record.getRecord()->name);
